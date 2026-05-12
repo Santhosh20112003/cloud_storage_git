@@ -1,60 +1,72 @@
-# GitHub Drive - Phase 1
+# GitHub Drive - Modern Cloud Storage
 
-This is a modern React application that uses GitHub as a cloud storage backend.
+GitHub Drive is a premium, high-fidelity web application that transforms your GitHub account into a personal cloud storage system. Built with **React 19**, **Vite**, and **Framer Motion**, it offers a seamless, VS Code-inspired experience for managing your files and folders directly on GitHub.
 
-## Phase 1: Auth & Repo Setup
-- **GitHub OAuth Login**: Integrated with redirect flow.
-- **Auto-Repo Creation**: Automatically checks for and creates a private `github-drive` repository.
-- **Premium UI**: Dark mode, glassmorphism, and smooth animations.
+![Dashboard Preview](https://via.placeholder.com/1200x600?text=GitHub+Drive+Premium+UI)
 
-## Prerequisites
+## 🚀 Key Features
 
-1. Create a **GitHub OAuth App** in your GitHub settings:
-   - Go to `Settings` > `Developer settings` > `OAuth Apps` > `New OAuth App`.
-   - **Application Name**: GitHub Drive
-   - **Homepage URL**: `http://localhost:5173`
-   - **Authorization callback URL**: `http://localhost:5173/callback`
-2. Copy the **Client ID** and **Client Secret**.
+### 📂 Advanced File Management
+- **Directory Browsing**: Navigate through your GitHub repository with a folder-based explorer.
+- **Breadcrumb Navigation**: Quickly jump between parent directories.
+- **Smart Uploads**: Upload files directly into specific folders (automatically encoded to Base64).
+- **Folder Support**: Create new directories with a single click.
+- **Rename & Delete**: Manage your file names and cleanup unwanted items.
+- **Batch Downloads**: Select multiple files and download them instantly.
 
-## Environment Setup
+### 🎨 Premium User Experience
+- **Glassmorphism UI**: A sleek, modern design system with semi-transparent surfaces and vibrant accents.
+- **VS Code Editor**: A built-in code editor for modifying text, markdown, and code files directly.
+- **Storage Analytics**: Real-time breakdown of your storage usage by file type (Images, Docs, Videos, etc.).
+- **Dynamic Animations**: Smooth transitions and micro-interactions powered by Framer Motion.
 
-Create a `.env` file in the root directory and add:
+### 🔐 Secure Integration
+- **GitHub OAuth Login**: Securely authenticate using your GitHub account.
+- **Auto-Provisioning**: The app automatically detects or creates a private `github-drive` repository for your data.
+- **Zero Configuration Backend**: Uses Vite's proxy system to handle secure token exchange.
+
+---
+
+## 🛠️ Getting Started
+
+### 1. Prerequisites
+Create a **GitHub OAuth App** in your GitHub settings:
+1. Go to `Settings` > `Developer settings` > `OAuth Apps` > `New OAuth App`.
+2. **Application Name**: `GitHub Drive`
+3. **Homepage URL**: `http://localhost:5173`
+4. **Authorization callback URL**: `http://localhost:5173/callback`
+5. Click **Register application**.
+6. Generate a **Client Secret** and copy both the **Client ID** and **Client Secret**.
+
+### 2. Environment Setup
+Create a `.env` file in the root directory (or copy from `.exmple.env`):
 
 ```env
-VITE_GITHUB_CLIENT_ID=your_client_id
+VITE_GITHUB_CLIENT_ID=your_client_id_here
+VITE_GITHUB_CLIENT_SECRET=your_client_secret_here
 VITE_REDIRECT_URI=http://localhost:5173/callback
 ```
 
-> [!TIP]
-> **No Backend Required**: This app now uses **GitHub Device Flow**, which means you don't need a backend proxy or server to get started. You can run it entirely from your browser!
-
-## Features (Phase 1)
-
-- 🎨 **Premium UI**: Glassmorphism design system with Framer Motion animations.
-- 🔐 **OAuth Device Flow**: Secure authentication without a backend server.
-- 📦 **Auto-Repo Setup**: Automatically checks for and creates a private `github-drive` repository for file storage.
-- 🚀 **Performance**: Built with Vite and React for lightning-fast experience.
-
-## Next Steps (Phase 2)
-
-- [ ] Implement File Explorer (Dashboard)
-- [ ] File Upload (Base64 encoding via GitHub API)
-- [ ] Folder Navigation
-- [ ] File Download & Preview
-
-## Start the Development Server
+### 3. Installation & Run
 ```bash
+# Install dependencies
+npm install
+
+# Start development server
 npm run dev
 ```
 
-## Note on Token Exchange
-GitHub OAuth requires a `client_secret` to exchange the temporary code for an access token. For security, this should be done on a backend/proxy server. 
-- In this phase, the logic is implemented in `src/App.jsx` and `src/context/GithubContext.jsx`.
-- You can use a simple Netlify function or a tool like `github-oauth-bridge` to handle the exchange.
+---
 
-## Tech Stack
-- **React 19**
-- **Vite**
-- **Framer Motion** (Animations)
-- **Lucide React** (Icons)
-- **Axios** (API)
+## 💻 Tech Stack
+- **Frontend**: React 19, Vite
+- **Styling**: Vanilla CSS (Custom Design System)
+- **Animations**: Framer Motion
+- **Icons**: Lucide React
+- **HTTP Client**: Axios
+- **Routing**: React Router 7
+
+## 🛡️ Security Note
+This application currently handles the `CLIENT_SECRET` on the client-side for ease of setup. For a production-ready environment, it is recommended to move the token exchange logic to a secure backend server or serverless function to keep your secrets hidden.
+
+---
