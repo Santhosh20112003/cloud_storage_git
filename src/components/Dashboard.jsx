@@ -1,21 +1,60 @@
 import React, { useRef } from 'react';
 import { useGithub } from '../context/GithubContext';
-import { 
-  Loader2, Database, Shield, Zap, Folder, File, Clock, Settings, Search, HardDrive, LogOut, ChevronRight, MoreVertical, PlusSquare, ListFilter,
-  Image as ImageIcon, Video, FileText, MoreHorizontal, ExternalLink, CheckCircle2, FolderPlus, Edit3, ArrowLeft
-} from 'lucide-react';
+import {
+  FaSpinner,
+  FaDatabase,
+  FaShieldAlt,
+  FaBolt,
+  FaFolder,
+  FaFile,
+  FaClock,
+  FaCog,
+  FaSearch,
+  FaHdd,
+  FaSignOutAlt,
+  FaChevronRight,
+  FaEllipsisV,
+  FaPlusSquare,
+  FaFilter,
+  FaImage,
+  FaVideo,
+  FaFileAlt,
+  FaEllipsisH,
+  FaExternalLinkAlt,
+  FaCheckCircle,
+  FaFolderPlus,
+  FaEdit,
+  FaArrowLeft,
+  FaRegClock,
+} from 'react-icons/fa';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import Sidebar from './Sidebar';
 import Header from './Header';
 
 const Dashboard = () => {
-  const { user, token, repoStatus, logout } = useGithub();
+  const {
+    user,
+    githubToken,
+    githubUsername,
+    repoName,
+    repoStatus,
+    isGithubConnected,
+    connectGithubAccount,
+    logout,
+    switchGithubAccount,
+    updateRepoName,
+  } = useGithub();
   const [selectedFiles, setSelectedFiles] = React.useState([]);
   const [items, setItems] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
+  const [repoInput, setRepoInput] = React.useState(repoName);
   const [editingFile, setEditingFile] = React.useState(null);
   const [editorContent, setEditorContent] = React.useState('');
+  React.useEffect(() => {
+    setRepoInput(repoName);
+  }, [repoName]);
+  const repository = repoName || 'github-drive';
   const [saving, setSaving] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [activeView, setActiveView] = React.useState('dashboard');
@@ -24,18 +63,18 @@ const Dashboard = () => {
   const fileInputRef = useRef(null);
 
   const fetchContents = async () => {
-    if (repoStatus !== 'ready' || !user || !token) {
+    if (repoStatus !== 'ready' || !user || !githubToken) {
       setLoading(false);
       return;
     }
     try {
       setLoading(true);
       const url = currentPath 
-        ? `https://api.github.com/repos/${user.login}/github-drive/contents/${encodeURIComponent(currentPath)}`
-        : `https://api.github.com/repos/${user.login}/github-drive/contents`;
+        ? `https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(currentPath)}`
+        : `https://api.github.com/repos/${githubUsername}/${repository}/contents`;
       
       const response = await axios.get(url, {
-        headers: { Authorization: `token ${token}` }
+        headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
       });
       const rawItems = Array.isArray(response.data) ? response.data : [response.data];
       setItems(rawItems);
@@ -43,9 +82,9 @@ const Dashboard = () => {
       // Background fetch for modification dates
       const itemsWithDates = await Promise.all(rawItems.map(async (item) => {
         try {
-          const commitResp = await axios.get(`https://api.github.com/repos/${user.login}/github-drive/commits`, {
+          const commitResp = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/commits`, {
             params: { path: item.path, per_page: 1 },
-            headers: { Authorization: `token ${token}` }
+            headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
           });
           const date = commitResp.data[0]?.commit?.committer?.date;
           return { ...item, lastModified: date };
@@ -55,8 +94,13 @@ const Dashboard = () => {
       }));
       setItems(itemsWithDates);
     } catch (err) {
-      console.error('Failed to fetch repo contents', err);
-      setItems([]);
+      if (err.response && err.response.status === 404) {
+        // Empty repository, not an error
+        setItems([]);
+      } else {
+        console.error('Failed to fetch repo contents', err);
+        setItems([]);
+      }
     } finally {
       setLoading(false);
       setSelectedFiles([]);
@@ -65,7 +109,7 @@ const Dashboard = () => {
 
   React.useEffect(() => {
     fetchContents();
-  }, [user, token, repoStatus, currentPath]);
+  }, [user, githubToken, repoStatus, currentPath]);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -86,11 +130,11 @@ const Dashboard = () => {
       const content = event.target.result.split(',')[1];
       try {
         const uploadPath = currentPath ? `${currentPath}/${file.name}` : file.name;
-        await axios.put(`https://api.github.com/repos/${user.login}/github-drive/contents/${encodeURIComponent(uploadPath)}`, {
+        await axios.put(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(uploadPath)}`, {
           message: `Upload ${file.name}`,
           content
         }, {
-          headers: { Authorization: `token ${token}` }
+          headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
         });
         fetchContents();
       } catch (err) {
@@ -110,48 +154,70 @@ const Dashboard = () => {
     
     const ext = file.name.split('.').pop()?.toLowerCase();
     const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'];
+    const videoExtensions = ['mp4', 'webm', 'ogg'];
+    const audioExtensions = ['mp3', 'wav', 'ogg'];
     const textExtensions = ['txt', 'md', 'js', 'jsx', 'ts', 'tsx', 'css', 'html', 'json', 'py', 'java', 'c', 'cpp', 'sh', 'sql', 'env', 'gitignore'];
 
-    if (imageExtensions.includes(ext)) {
+    if (imageExtensions.includes(ext) || videoExtensions.includes(ext) || audioExtensions.includes(ext) || ext === 'pdf') {
       try {
         setLoading(true);
-        const response = await axios.get(`https://api.github.com/repos/${user.login}/github-drive/contents/${encodeURIComponent(file.path)}`, {
-          headers: { Authorization: `token ${token}` }
-        });
-        const dataUrl = `data:image/${ext === 'svg' ? 'svg+xml' : ext};base64,${response.data.content.replace(/\n/g, '')}`;
-        setPreviewFile({ ...file, type: 'image', dataUrl });
+        if (ext === 'pdf' || videoExtensions.includes(ext) || audioExtensions.includes(ext)) {
+            // For these types, it's better to stream directly from raw.githubusercontent or download URL
+            // Since private repos require token for raw, let's use the UI friendly download_url which might work or provide a way
+            // Sometimes download_url redirects. However, GitHub API doesn't allow direct stream via API without careful manipulation.
+            const response = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
+               headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github.raw' },
+               responseType: 'blob'
+            });
+            const blobUrl = URL.createObjectURL(response.data);
+            
+            let type = 'raw';
+            if(ext === 'pdf') type = 'pdf';
+            else if(videoExtensions.includes(ext)) type = 'video';
+            else if(audioExtensions.includes(ext)) type = 'audio';
+
+            setPreviewFile({ ...file, type, dataUrl: blobUrl });
+        } else {
+            const response = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
+              headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
+            });
+            const dataUrl = `data:image/${ext === 'svg' ? 'svg+xml' : ext};base64,${response.data.content.replace(/\n/g, '')}`;
+            setPreviewFile({ ...file, type: 'image', dataUrl });
+        }
       } catch (err) {
-        console.error('Failed to fetch image content', err);
-        alert('Could not preview image. Try downloading it instead.');
+        console.error('Failed to fetch media content', err);
+        alert('Could not preview media. Try downloading it instead.');
+        window.open(file.download_url, '_blank');
       } finally {
         setLoading(false);
       }
       return;
     }
 
-    if (ext === 'pdf') {
-      window.open(file.download_url, '_blank');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const response = await axios.get(`https://api.github.com/repos/${user.login}/github-drive/contents/${encodeURIComponent(file.path)}`, {
-        headers: { Authorization: `token ${token}` }
-      });
-      const content = decodeURIComponent(escape(window.atob(response.data.content)));
-      setEditingFile(file);
-      setEditorContent(content);
-    } catch (err) {
-      console.error('Failed to fetch file content', err);
-      if (file.download_url) {
-        alert('Could not open this file for direct editing. Downloading instead...');
-        window.open(file.download_url, '_blank');
-      } else {
-        alert('Could not open or download this file.');
+    if (textExtensions.includes(ext) || !ext) {
+      try {
+        setLoading(true);
+        const response = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
+          headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
+        });
+        // Handle utf-8 properly
+        const content = decodeURIComponent(escape(window.atob(response.data.content)));
+        setEditingFile(file);
+        setEditorContent(content);
+      } catch (err) {
+        console.error('Failed to fetch file content', err);
+        if (file.download_url) {
+          alert('Could not open this file for direct editing. Downloading instead...');
+          window.open(file.download_url, '_blank');
+        } else {
+          alert('Could not open or download this file.');
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
+    } else {
+      // If extension is not handled, download it
+      window.open(file.download_url, '_blank');
     }
   };
 
@@ -160,12 +226,12 @@ const Dashboard = () => {
     setSaving(true);
     try {
       const content = window.btoa(unescape(encodeURIComponent(editorContent)));
-      await axios.put(`https://api.github.com/repos/${user.login}/github-drive/contents/${encodeURIComponent(editingFile.path)}`, {
+      await axios.put(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(editingFile.path)}`, {
         message: `Update ${editingFile.name}`,
         content,
         sha: editingFile.sha
       }, {
-        headers: { Authorization: `token ${token}` }
+        headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
       });
       setEditingFile(null);
       fetchContents();
@@ -229,10 +295,10 @@ const Dashboard = () => {
   }, [items]);
 
   const storageData = [
-    { label: 'Images', color: '#22c55e', bytes: categorizedStorage.Image.size, count: categorizedStorage.Image.count, icon: <ImageIcon size={20}/>, bg: '#f0fdf4' },
-    { label: 'Documents', color: '#f59e0b', bytes: categorizedStorage.Document.size, count: categorizedStorage.Document.count, icon: <FileText size={20}/>, bg: '#fffbeb' },
-    { label: 'Videos', color: '#3b82f6', bytes: categorizedStorage.Video.size, count: categorizedStorage.Video.count, icon: <Video size={20}/>, bg: '#eff6ff' },
-    { label: 'Others', color: '#ec4899', bytes: categorizedStorage.Others.size, count: categorizedStorage.Others.count, icon: <MoreHorizontal size={20}/>, bg: '#fdf2f8' },
+    { label: 'Images', color: '#22c55e', bytes: categorizedStorage.Image.size, count: categorizedStorage.Image.count, icon: <FaImage size={20}/>, bg: '#f0fdf4' },
+    { label: 'Documents', color: '#f59e0b', bytes: categorizedStorage.Document.size, count: categorizedStorage.Document.count, icon: <FaFileAlt size={20}/>, bg: '#fffbeb' },
+    { label: 'Videos', color: '#3b82f6', bytes: categorizedStorage.Video.size, count: categorizedStorage.Video.count, icon: <FaVideo size={20}/>, bg: '#eff6ff' },
+    { label: 'Others', color: '#ec4899', bytes: categorizedStorage.Others.size, count: categorizedStorage.Others.count, icon: <FaEllipsisH size={20}/>, bg: '#fdf2f8' },
   ].map(s => ({
     ...s,
     percentage: totalLimitBytes > 0 ? (s.bytes / totalLimitBytes) * 100 : 0
@@ -246,7 +312,7 @@ const Dashboard = () => {
   };
 
   const allFiles = items
-    .filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter(i => i && i.name && i.name.toLowerCase().includes((searchQuery || '').toLowerCase()))
     .map(i => ({
       name: i.name,
       size: i.type === 'dir' ? '--' : formatSize(i.size),
@@ -273,8 +339,8 @@ const Dashboard = () => {
       const item = items.find(i => i.path === path);
       if (item) {
         try {
-          await axios.delete(`https://api.github.com/repos/${user.login}/github-drive/contents/${encodeURIComponent(item.path)}`, {
-            headers: { Authorization: `token ${token}` },
+          await axios.delete(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(item.path)}`, {
+            headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
             data: { message: `Delete ${item.name}`, sha: item.sha }
           });
         } catch (e) {
@@ -301,11 +367,11 @@ const Dashboard = () => {
     setLoading(true);
     try {
       const path = currentPath ? `${currentPath}/${folderName}/.gitkeep` : `${folderName}/.gitkeep`;
-      await axios.put(`https://api.github.com/repos/${user.login}/github-drive/contents/${encodeURIComponent(path)}`, {
+      await axios.put(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(path)}`, {
         message: `Create folder ${folderName}`,
         content: window.btoa('')
       }, {
-        headers: { Authorization: `token ${token}` }
+        headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
       });
       fetchContents();
     } catch (err) {
@@ -330,19 +396,19 @@ const Dashboard = () => {
     setLoading(true);
     try {
       if (item.type === 'file') {
-        const resp = await axios.get(`https://api.github.com/repos/${user.login}/github-drive/contents/${encodeURIComponent(oldPath)}`, {
-          headers: { Authorization: `token ${token}` }
+        const resp = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(oldPath)}`, {
+          headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
         });
         
-        await axios.put(`https://api.github.com/repos/${user.login}/github-drive/contents/${encodeURIComponent(newPath)}`, {
+        await axios.put(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(newPath)}`, {
           message: `Rename ${item.name} to ${newName}`,
           content: resp.data.content,
         }, {
-          headers: { Authorization: `token ${token}` }
+          headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
         });
 
-        await axios.delete(`https://api.github.com/repos/${user.login}/github-drive/contents/${encodeURIComponent(oldPath)}`, {
-          headers: { Authorization: `token ${token}` },
+        await axios.delete(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(oldPath)}`, {
+          headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
           data: { message: `Delete old file after rename`, sha: item.sha }
         });
       } else {
@@ -367,7 +433,7 @@ const Dashboard = () => {
 
 
   return (
-    <div className="app-container">
+    <div className="flex bg-slate-50 min-h-screen font-sans">
       <Sidebar 
         activeView={activeView} 
         setActiveView={setActiveView} 
@@ -375,579 +441,452 @@ const Dashboard = () => {
         totalStorage="1 GB"
         percentage={(totalSizeBytes / totalLimitBytes) * 100}
       />
-      <main className="main-content">
+      
+      <main className="flex-1 flex flex-col min-w-0">
         <Header />
-        <div className="dashboard-content">
-          
-          {activeView === 'dashboard' && (
-            <div className="dashboard-header-row mb-6">
-              <div className="dashboard-search">
-                <Search size={18} className="search-icon" />
-                <input 
-                  type="text" 
-                  placeholder="Search files and folders..." 
-                  className="search-input"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                <div className="search-keys">
-                  <kbd>⌘</kbd>
-                  <kbd>K</kbd>
+        
+        <div className="flex-1 overflow-y-auto p-6 lg:p-10">
+          {(!isGithubConnected || repoStatus !== 'ready') && (
+            <div className="mb-8 bg-white border border-slate-200 rounded-3xl p-8 shadow-sm">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-bold text-slate-900">{isGithubConnected ? 'Finalize Storage' : 'Connect GitHub'}</h3>
+                  <p className="text-slate-500 max-w-lg">
+                    {isGithubConnected
+                      ? 'Your account is connected. Waiting for repository initialization...'
+                      : 'Connect your GitHub account to enable secure cloud storage for your files.'}
+                  </p>
+                  <div className="flex items-center gap-3 mt-4">
+                    <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold uppercase tracking-wider border border-slate-200">
+                      Repo: <span className="text-blue-600">{repository}</span>
+                    </span>
+                    {githubUsername && (
+                      <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-bold uppercase tracking-wider border border-blue-100">
+                        User: {githubUsername}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button 
+                    className="px-6 py-3 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 active:scale-[0.98]"
+                    onClick={connectGithubAccount}
+                  >
+                    {isGithubConnected ? 'Reconnect GitHub' : 'Connect Account'}
+                  </button>
+                  {isGithubConnected && (
+                    <button 
+                      className="px-6 py-3 bg-white border border-slate-200 text-slate-700 font-bold rounded-2xl hover:bg-slate-50 transition-all active:scale-[0.98]"
+                      onClick={switchGithubAccount}
+                    >
+                      Switch Account
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           )}
 
-          {activeView === 'recent' && (
-            <section className="dashboard-section">
-              <div className="section-header space-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Clock size={20} className="text-indigo-600" />
-                  <h3>Recent Activity</h3>
-                </div>
-                <button className="btn-view-all" onClick={() => setActiveView('dashboard')}>
-                  <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} />
-                  Back to Dashboard
-                </button>
-              </div>
-              <div className="cards-grid">
-                {allFiles
-                  .sort((a, b) => new Date(b.date) - new Date(a.date))
-                  .map((file, i) => {
-                    const isSelected = selectedFiles.includes(file.path);
-                    return (
-                      <div 
-                        key={i} 
-                        className={`card recent-file-card ${isSelected ? 'selected' : ''}`}
-                        onClick={() => toggleSelection(file.path)}
-                        onDoubleClick={() => handleDoubleClick(file)}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <div className="file-icon-box">
-                          <File size={20} className="icon-blue" />
-                        </div>
-                        <div className="file-info">
-                          <p className="file-name">{file.name}</p>
-                          <p className="file-meta">{file.size} • {file.type}</p>
-                        </div>
-                        <button 
-                          className="more-btn" 
-                          onClick={(e) => { e.stopPropagation(); toggleSelection(file.path); }}
-                        >
-                          <MoreVertical size={16} />
-                        </button>
-                      </div>
-                    );
-                  })}
-              </div>
-            </section>
-          )}
-
-          {activeView === 'docs' && (
-            <section className="dashboard-section">
-              <div className="section-header space-between mb-4">
-                <div className="flex items-center gap-2">
-                  <File size={20} className="text-indigo-600" />
-                  <h3>Documentations</h3>
-                </div>
-                <button className="btn-view-all" onClick={() => setActiveView('dashboard')}>
-                  <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} />
-                  Back to Dashboard
-                </button>
-              </div>
-              <div className="cards-grid">
-                {allFiles
-                  .filter(f => ['pdf', 'doc', 'docx', 'txt', 'md'].includes(f.name.split('.').pop()?.toLowerCase()))
-                  .length > 0 ? allFiles
-                  .filter(f => ['pdf', 'doc', 'docx', 'txt', 'md'].includes(f.name.split('.').pop()?.toLowerCase()))
-                  .map((file, i) => {
-                    const isSelected = selectedFiles.includes(file.path);
-                    return (
-                      <div 
-                        key={i} 
-                        className={`card recent-file-card ${isSelected ? 'selected' : ''}`}
-                        onClick={() => toggleSelection(file.path)}
-                        onDoubleClick={() => handleDoubleClick(file)}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <div className="file-icon-box">
-                          <File size={20} className="icon-blue" />
-                        </div>
-                        <div className="file-info">
-                          <p className="file-name">{file.name}</p>
-                          <p className="file-meta">{file.size} • {file.type}</p>
-                        </div>
-                        <button 
-                          className="more-btn" 
-                          onClick={(e) => { e.stopPropagation(); toggleSelection(file.path); }}
-                        >
-                          <MoreVertical size={16} />
-                        </button>
-                      </div>
-                    );
-                  }) : (
-                    <div className="empty-state-container">
-                      <div className="empty-state-icon">
-                        <File size={40} />
-                      </div>
-                      <h4>No document found</h4>
-                      <p>You haven't uploaded any documents yet. Supported formats: PDF, DOC, TXT, MD.</p>
-                    </div>
-                  )}
-              </div>
-            </section>
-          )}
-
-          {activeView === 'folders' && (
-            <section className="dashboard-section">
-              <div className="section-header space-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Folder size={20} className="text-indigo-600" />
-                  <h3>Folders</h3>
-                </div>
-                <button className="btn-view-all" onClick={() => setActiveView('dashboard')}>
-                  <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} />
-                  Back to Dashboard
-                </button>
-              </div>
-              <div className="cards-grid">
-                {allFiles
-                  .filter(f => f.type === 'Folder')
-                  .length > 0 ? allFiles
-                  .filter(f => f.type === 'Folder')
-                  .map((folder, i) => {
-                    const isSelected = selectedFiles.includes(folder.path);
-                    return (
-                      <div 
-                        key={i} 
-                        className={`card recent-file-card ${isSelected ? 'selected' : ''}`}
-                        onClick={() => toggleSelection(folder.path)}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <div className="file-icon-box">
-                          <Folder size={20} className="icon-folder" fill="currentColor" />
-                        </div>
-                        <div className="file-info">
-                          <p className="file-name">{folder.name}</p>
-                          <p className="file-meta">Folder • {folder.date}</p>
-                        </div>
-                        <button 
-                          className="more-btn" 
-                          onClick={(e) => { e.stopPropagation(); toggleSelection(folder.path); }}
-                        >
-                          <MoreVertical size={16} />
-                        </button>
-                      </div>
-                    );
-                  }) : (
-                    <div className="empty-state-container">
-                      <div className="empty-state-icon">
-                        <Folder size={40} />
-                      </div>
-                      <h4>No folder found</h4>
-                      <p>You haven't created any folders in this repository yet.</p>
-                    </div>
-                  )}
-              </div>
-            </section>
-          )}
-
-          {activeView === 'settings' && (
-            <section className="dashboard-section">
-              <div className="section-header space-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Settings size={20} className="text-indigo-600" />
-                  <h3>Account Settings</h3>
-                </div>
-                <button className="btn-view-all" onClick={() => setActiveView('dashboard')}>
-                  <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} />
-                  Back to Dashboard
-                </button>
-              </div>
-              <div className="card settings-card p-6">
-                <div className="settings-user-info mb-6">
-                  <img src={user?.avatar_url} alt="profile" className="settings-avatar" />
-                  <div>
-                    <h4>{user?.name || user?.login}</h4>
-                    <p className="text-muted">{user?.login}</p>
-                  </div>
-                </div>
-                
-                <div className="settings-options">
-                  <div className="settings-item">
-                    <div className="item-label">
-                      <h5>Storage Plan</h5>
-                      <p>You are currently on the free 1 GB plan.</p>
-                    </div>
-                    <span className="badge-primary">Free Tier</span>
-                  </div>
-                  
-                  <hr className="my-6 border-slate-100" />
-                  
-                  <div className="settings-section">
-                    <h5 className="section-subtitle">Account Management</h5>
-                    <p className="section-desc">Manage your session and account connections.</p>
-                    <div className="account-actions-grid">
-                      <div className="action-card danger">
-                        <div className="action-info">
-                          <h6>Sign Out</h6>
-                          <p>Securely log out from your current session.</p>
-                        </div>
-                        <button onClick={logout} className="btn-danger-solid">
-                          <LogOut size={18} />
-                          Sign Out
-                        </button>
-                      </div>
-
-                      <div className="action-card">
-                        <div className="action-info">
-                          <h6>Switch Account</h6>
-                          <p>Connect with a different GitHub profile.</p>
-                        </div>
-                        <button onClick={logout} className="btn-switch">
-                          <ExternalLink size={18} />
-                          Switch Account
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {activeView === 'mystorage' && (
-            <section className="dashboard-section">
-              <div className="section-header space-between mb-4">
-                <div className="flex items-center gap-2">
-                  <HardDrive size={20} className="text-indigo-600" />
-                  <h3>Storage Breakdown</h3>
-                </div>
-                <button className="btn-view-all" onClick={() => setActiveView('dashboard')}>
-                  <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} />
-                  Back to Dashboard
-                </button>
-              </div>
-              
-              {/* Total Storage Summary */}
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="card storage-summary-card mb-8"
-              >
-                <div className="summary-header">
-                  <div>
-                    <h4 className="text-xl font-bold">{formatMbGb(totalSizeBytes)} used</h4>
-                    <p className="text-muted">of {formatGb(totalLimitBytes)} total storage</p>
-                  </div>
-                  <div className="percentage-pill">
-                    {((totalSizeBytes / totalLimitBytes) * 100).toFixed(1)}% Full
-                  </div>
-                </div>
-                <div className="summary-progress-outer">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(totalSizeBytes / totalLimitBytes) * 100}%` }}
-                    transition={{ duration: 1, ease: "easeOut" }}
-                    className="summary-progress-inner"
-                  />
-                </div>
-              </motion.div>
-
-              <div className="storage-grid">
-                {storageData.map((s, i) => (
-                  <motion.div 
-                    key={i} 
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: i * 0.1 }}
-                    className="storage-card" 
-                    style={{ '--accent': s.color, '--bg': s.bg }}
-                  >
-                    <div className="storage-card-header">
-                      <div className="storage-icon-box">
-                        {s.icon}
-                      </div>
-                      <span className="storage-percentage">{s.percentage.toFixed(1)}%</span>
-                    </div>
-                    <div className="storage-card-body">
-                      <div className="storage-info">
-                        <h4>{s.label}</h4>
-                        <p>{s.count} files</p>
-                      </div>
-                      <div className="storage-bar">
-                        <div className="storage-progress" style={{ width: `${s.percentage}%` }} />
-                      </div>
-                      <div className="storage-size">{formatMbGb(s.bytes)}</div>
-                    </div>
-                  </motion.div>
-                ))}
-                
-                {/* Available Card */}
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.4 }}
-                  className="storage-card available"
-                >
-                  <div className="storage-card-content">
-                    <div className="storage-icon-box">
-                      <Database size={20} />
-                    </div>
-                    <div className="storage-card-info">
-                      <h4>Available</h4>
-                      <p>Free space</p>
-                    </div>
-                  </div>
-                  <div className="storage-card-footer">
-                    <span className="storage-card-size">{formatMbGb(remainingBytes)}</span>
-                    <div className="storage-mini-bar">
-                      <div className="storage-mini-progress" style={{ width: `${(remainingBytes / totalLimitBytes) * 100}%`, background: '#e2e8f0' }} />
-                    </div>
-                  </div>
-                </motion.div>
-              </div>
-            </section>
-          )}
-
           {activeView === 'dashboard' && (
-            <>
-              <section className="dashboard-section">
-                <div className="section-header space-between">
-                  <h3>Recently Modified</h3>
-                  <button 
-                    className="btn-view-all" 
-                    onClick={() => setActiveView('recent')}
-                  >
-                    View All
-                    <ChevronRight size={14} />
+            <div className="max-w-7xl mx-auto space-y-10">
+              <div className="relative group max-w-2xl">
+                <FaSearch size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                <input 
+                  type="text" 
+                  placeholder="Search your drive..." 
+                  className="w-full pl-14 pr-6 py-4 bg-white border border-slate-200 rounded-2xl shadow-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all text-slate-700 font-medium"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <div className="absolute right-5 top-1/2 -translate-y-1/2 flex gap-1 items-center">
+                  <kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-black text-slate-400 font-sans shadow-sm">⌘</kbd>
+                  <kbd className="px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-black text-slate-400 font-sans shadow-sm">K</kbd>
+                </div>
+              </div>
+
+              {/* Storage Overview Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {storageData.map((data, i) => (
+                  <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow group">
+                    <div className={`w-12 h-12 rounded-2xl mb-4 flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-110`} style={{ backgroundColor: data.color }}>
+                      {data.icon}
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="font-bold text-slate-900 tracking-tight">{data.label}</h4>
+                      <p className="text-slate-400 text-sm font-bold">{data.count} Files • {formatMbGb(data.bytes)}</p>
+                    </div>
+                    <div className="mt-6 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${data.percentage}%`, backgroundColor: data.color }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Recently Modified Section */}
+              <section className="space-y-6">
+                <div className="flex items-center justify-between px-2">
+                  <h3 className="text-xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                    <span className="w-1.5 h-6 bg-blue-600 rounded-full"></span>
+                    Recently Modified
+                  </h3>
+                  <button className="text-sm font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 group" onClick={() => setActiveView('recent')}>
+                    View All <FaChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
                   </button>
                 </div>
-                <div className="cards-grid">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {recentFiles.map((file, i) => (
                     <div 
                       key={i} 
-                      className="card recent-file-card"
+                      className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md hover:border-blue-100 transition-all group cursor-pointer active:scale-95"
                       onDoubleClick={() => handleDoubleClick(file)}
                     >
-                      <div className="file-icon-box">
-                        <File size={24} className="icon-blue" />
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                          <FaFile size={20} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-800 truncate mb-0.5 group-hover:text-blue-600 transition-colors">{file.name}</p>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{file.size} • {file.type}</p>
+                        </div>
+                        <button className="more-btn p-1 text-slate-300 hover:text-slate-600 transition-colors"><FaEllipsisV size={14} /></button>
                       </div>
-                      <div className="file-info">
-                        <p className="file-name">{file.name}</p>
-                        <p className="file-meta">{file.size} • {file.type}</p>
-                      </div>
-                      <button className="more-btn"><MoreVertical size={16} /></button>
                     </div>
                   ))}
                 </div>
               </section>
 
-              <section className="dashboard-section">
-                <div className="section-header space-between">
+              {/* Cloud Storage Table Section */}
+              <section className="space-y-6">
+                <div className="flex items-center justify-between px-2">
                   <div className="flex items-center gap-4">
-                    <h3>Cloud Storage</h3>
+                    <h3 className="text-xl font-bold text-slate-800 tracking-tight">Cloud Storage</h3>
                     {currentPath && (
-                      <button className="btn-ghost p-1" onClick={goBack}>
-                        <ArrowLeft size={18} />
+                      <button className="p-2 hover:bg-slate-200 rounded-xl transition-colors" onClick={goBack}>
+                        <FaArrowLeft size={16} className="text-slate-600" />
                       </button>
                     )}
-                    <div className="breadcrumb">
-                      <span onClick={() => setCurrentPath('')} style={{ cursor: 'pointer' }}>Root</span>
+                    <nav className="flex items-center bg-slate-100 px-4 py-2 rounded-xl text-xs font-bold text-slate-500">
+                      <span className="hover:text-blue-600 cursor-pointer" onClick={() => setCurrentPath('')}>Root</span>
                       {currentPath.split('/').filter(Boolean).map((part, idx, arr) => (
                         <React.Fragment key={idx}>
-                          <span className="mx-1 text-muted">/</span>
+                          <span className="mx-2 opacity-30">/</span>
                           <span 
+                            className={`hover:text-blue-600 cursor-pointer ${idx === arr.length - 1 ? 'text-blue-600' : ''}`}
                             onClick={() => setCurrentPath(arr.slice(0, idx + 1).join('/'))}
-                            style={{ cursor: 'pointer' }}
                           >
                             {part}
                           </span>
                         </React.Fragment>
                       ))}
-                    </div>
+                    </nav>
                   </div>
-                  <div className="section-actions">
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      style={{ display: 'none' }} 
-                      onChange={handleFileChange} 
-                    />
-                    <button className="btn-primary shadow-btn" onClick={handleUploadClick}>
+                  <div className="flex gap-3">
+                    <button 
+                      className="px-5 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95"
+                      onClick={handleUploadClick}
+                    >
                       Upload File
                     </button>
-                    <button className="btn-outline" onClick={handleCreateFolder}>
-                      <FolderPlus size={16} />
-                      New Folder
+                    <button 
+                      className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center gap-2 active:scale-95"
+                      onClick={handleCreateFolder}
+                    >
+                      <FaFolderPlus size={16} /> New Folder
                     </button>
+                    <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
                   </div>
                 </div>
-                <div className="table-container card">
-                  {loading && (
-                    <div className="loading-overlay">
-                      <Loader2 className="spinner" size={32} />
-                    </div>
-                  )}
-                  <table className="data-table">
-                    <thead>
+
+                <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-50/50 border-b border-slate-200">
                       <tr>
-                        <th className="checkbox-cell"><div className="checkbox-custom" /></th>
-                        <th>Name</th>
-                        <th>Size</th>
-                        <th>Type</th>
-                        <th>Last Modified</th>
-                        <th>Owner</th>
-                        <th className="action-cell"></th>
+                        <th className="px-6 py-4 w-12"><div className="w-4 h-4 rounded border border-slate-300"></div></th>
+                        <th className="px-6 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Name</th>
+                        <th className="px-6 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest hidden sm:table-cell whitespace-nowrap">Size</th>
+                        <th className="px-6 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest hidden md:table-cell whitespace-nowrap">Type</th>
+                        <th className="px-6 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest hidden lg:table-cell whitespace-nowrap">Modified</th>
+                        <th className="px-6 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest hidden xl:table-cell whitespace-nowrap">Owner</th>
+                        <th className="px-6 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest"></th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {allFiles.length > 0 ? allFiles.map((file, i) => {
+                    <tbody className="divide-y divide-slate-100 relative">
+                      {loading && (
+                        <tr>
+                          <td colSpan="7" className="py-24 text-center">
+                            <FaSpinner size={32} className="animate-spin text-blue-600 mx-auto" />
+                          </td>
+                        </tr>
+                      )}
+                      
+                      {!loading && allFiles.length === 0 && (
+                        <tr>
+                          <td colSpan="7" className="py-24 text-center">
+                            <div className="max-w-xs mx-auto space-y-4">
+                              <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 mx-auto border border-dashed border-slate-200">
+                                <FaFolder size={32} />
+                              </div>
+                              <div className="space-y-1">
+                                <p className="font-bold text-slate-800">Empty directory</p>
+                                <p className="text-sm text-slate-400 font-medium">Upload files to populate your drive storage.</p>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+
+                      {!loading && allFiles.map((file, i) => {
                         const isSelected = selectedFiles.includes(file.path);
                         return (
                           <tr 
                             key={i} 
                             onClick={() => toggleSelection(file.path)} 
                             onDoubleClick={() => handleDoubleClick(file)}
-                            className={isSelected ? 'selected' : ''}
+                            className={`group cursor-pointer transition-all ${isSelected ? 'bg-blue-50/70 py-6' : 'hover:bg-slate-50'}`}
                           >
-                            <td className="checkbox-cell">
-                              <div className={`checkbox-custom ${isSelected ? 'checked' : ''}`} />
-                            </td>
-                            <td>
-                              <div className="name-cell">
-                                {file.type === 'Folder' ? (
-                                  <Folder size={20} className="icon-folder" fill="currentColor" />
-                                ) : (
-                                  <File size={20} className="icon-file" />
-                                )}
-                                <span className="item-name">{file.name}</span>
+                            <td className="px-6 py-4">
+                              <div className={`w-5 h-5 rounded border-2 transition-all flex items-center justify-center ${isSelected ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200 group-hover:border-slate-400'}`}>
+                                {isSelected && <FaCheckCircle size={10} />}
                               </div>
                             </td>
-                            <td className="meta-cell">{file.size}</td>
-                            <td className="meta-cell">{file.type}</td>
-                            <td className="meta-cell">{file.date}</td>
-                            <td>
-                              <div className="owner-cell">
-                                <img src={user?.avatar_url || `https://i.pravatar.cc/150?u=${i}`} alt="owner" className="owner-avatar" />
-                                <span className="owner-name">{file.owner}</span>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-4">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${file.type === 'Folder' ? 'bg-amber-50 text-amber-500 border border-amber-100' : 'bg-blue-50 text-blue-500 border border-blue-100'}`}>
+                                  {file.type === 'Folder' ? <FaFolder size={20} /> : <FaFileAlt size={20} />}
+                                </div>
+                                <span className="font-bold text-slate-700 truncate max-w-[200px] group-hover:text-blue-600 transition-colors">{file.name}</span>
                               </div>
                             </td>
-                            <td className="action-cell">
-                              <button className="more-btn" onClick={(e) => { e.stopPropagation(); toggleSelection(file.path); }}><MoreVertical size={16} /></button>
+                            <td className="px-6 py-4 text-sm font-bold text-slate-400 hidden sm:table-cell">{file.size}</td>
+                            <td className="px-6 py-4 text-sm font-bold text-slate-400 hidden md:table-cell">{file.type}</td>
+                            <td className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest hidden lg:table-cell">{file.date}</td>
+                            <td className="px-6 py-4 hidden xl:table-cell">
+                              <div className="flex items-center gap-2">
+                                <img src={user?.avatar_url || `https://i.pravatar.cc/150?u=${i}`} alt="owner" className="w-7 h-7 rounded-full border border-white ring-1 ring-slate-200" />
+                                <span className="text-sm font-bold text-slate-600">{file.owner || 'You'}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <button 
+                                className="p-2 hover:bg-white rounded-lg transition-all text-slate-300 hover:text-slate-700"
+                                onClick={(e) => { e.stopPropagation(); toggleSelection(file.path); }}
+                              >
+                                <FaEllipsisV size={16} />
+                              </button>
                             </td>
                           </tr>
                         );
-                      }) : (
-                        <tr>
-                          <td colSpan="7" className="empty-table">
-                            No files found. Upload something to get started!
-                          </td>
-                        </tr>
-                      )}
+                      })}
                     </tbody>
                   </table>
-                  
-                  {selectedFiles.length > 0 && (
-                    <div className="selection-bar">
-                      <div className="selection-info">
-                        <CheckCircle2 size={16} className="text-green-500" />
-                        <span>{selectedFiles.length} items selected</span>
+                </div>
+
+                {selectedFiles.length > 0 && (
+                  <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700/50 text-white px-8 py-4 rounded-[40px] shadow-2xl flex items-center gap-10 z-50 animate-in slide-in-from-bottom-10 backdrop-blur-xl bg-opacity-90">
+                    <div className="flex items-center gap-4 border-r border-slate-700/50 pr-10">
+                      <div className="w-8 h-8 bg-blue-600 rounded-2xl flex items-center justify-center text-sm font-black shadow-lg shadow-blue-600/20">{selectedFiles.length}</div>
+                      <span className="text-sm font-bold tracking-tight text-slate-200 whitespace-nowrap">Selected Items</span>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <button className="text-sm font-bold text-slate-400 hover:text-white transition-colors" onClick={() => setSelectedFiles([])}>Deselect</button>
+                      <button className="px-5 py-2.5 bg-white text-slate-900 rounded-2xl text-sm font-black hover:bg-slate-100 transition-all active:scale-95" onClick={handleDownload}>Download</button>
+                      {selectedFiles.length === 1 && (
+                        <button className="px-5 py-2.5 bg-slate-800 text-white rounded-2xl text-sm font-black hover:bg-slate-700 transition-all border border-slate-700 active:scale-95" onClick={handleRename}>Rename</button>
+                      )}
+                      <button className="px-5 py-2.5 bg-red-600/10 text-red-500 rounded-2xl text-sm font-black hover:bg-red-600 hover:text-white transition-all active:scale-95" onClick={handleDelete}>Delete</button>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {activeView === 'mystorage' && (
+            <div className="max-w-7xl mx-auto space-y-8">
+              <div className="bg-slate-900 rounded-[48px] p-12 text-white relative overflow-hidden shadow-2xl">
+                <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/20 blur-[120px] rounded-full translate-x-1/2 -translate-y-1/2"></div>
+                <div className="relative z-10 space-y-8">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-2">
+                      <h3 className="text-4xl font-bold tracking-tight">{formatMbGb(totalSizeBytes)} <span className="text-slate-500 font-light italic">used</span></h3>
+                      <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Of {formatGb(totalLimitBytes)} Total Storage Plan</p>
+                    </div>
+                    <div className="px-6 py-2 bg-blue-600 text-[11px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg shadow-blue-600/20">
+                      {((totalSizeBytes / totalLimitBytes) * 100).toFixed(1)}% Utilization
+                    </div>
+                  </div>
+                  <div className="w-full h-4 bg-white/10 rounded-full overflow-hidden backdrop-blur-sm p-1 border border-white/5">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(totalSizeBytes / totalLimitBytes) * 100}%` }}
+                      transition={{ duration: 1.5, ease: "circOut" }}
+                      className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full shadow-[0_0_20px_rgba(37,99,235,0.4)]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {storageData.map((s, i) => (
+                  <div key={i} className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm transition-all hover:translate-y-[-4px] hover:shadow-xl group">
+                    <div className="flex items-center justify-between mb-10">
+                      <div className="w-14 h-14 rounded-3xl flex items-center justify-center text-white shadow-2xl transition-transform group-hover:scale-110 rotate-3" style={{ backgroundColor: s.color }}>
+                        {s.icon}
                       </div>
-                      <div className="selection-actions">
-                        <button className="btn-ghost" onClick={() => setSelectedFiles([])}>Deselect All</button>
-                        {selectedFiles.length === 1 && (
-                          <button className="btn-ghost" onClick={handleRename}>
-                            <Edit3 size={16} /> Rename
-                          </button>
-                        )}
-                        <button className="btn-primary" onClick={handleDownload}>Download</button>
-                        <button className="btn-danger" onClick={handleDelete}>Delete</button>
+                      <div className="text-right">
+                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Percentage</p>
+                        <p className="text-xl font-black text-slate-800" style={{ color: s.color }}>{s.percentage.toFixed(1)}%</p>
                       </div>
                     </div>
-                  )}
-                </div>
-              </section>
-            </>
-          )}
-        </div>
-
-        {/* Modals */}
-        {previewFile && previewFile.type === 'image' && (
-          <div className="editor-overlay">
-            <div className="preview-modal">
-              <div className="editor-toolbar">
-                <div className="editor-title">
-                  <ImageIcon size={14} />
-                  <span>Preview — {previewFile.name}</span>
-                </div>
-                <div className="editor-actions p-0 bg-transparent border-0">
-                  <button className="btn-vscode-outline" onClick={() => setPreviewFile(null)}>Close</button>
-                  <button className="btn-vscode" onClick={() => window.open(previewFile.download_url, '_blank')}>
-                    <ExternalLink size={14} />
-                    Open Original
-                  </button>
-                </div>
-              </div>
-              <div className="preview-body">
-                <img src={previewFile.dataUrl || previewFile.download_url} alt={previewFile.name} className="preview-image" />
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="text-lg font-black text-slate-900 tracking-tight">{s.label}</h4>
+                        <p className="text-sm font-bold text-slate-400 italic">{s.count} Files Found</p>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-50 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${s.percentage}%`, backgroundColor: s.color }} />
+                      </div>
+                      <p className="text-2xl font-black text-slate-900 tabular-nums">{formatMbGb(s.bytes)}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {editingFile && (
-          <div className="editor-overlay">
-            <div className="editor-modal">
-              <div className="editor-header">
-                <div className="editor-toolbar">
-                  <div className="editor-title">
-                    <Database size={14} />
-                    <span>GitHub Drive — {editingFile.name}</span>
+          {activeView === 'settings' && (
+            <div className="max-w-3xl mx-auto">
+              <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-12 border-b border-slate-100 flex items-center gap-8">
+                  <div className="relative group">
+                    <img src={user?.photoURL || user?.avatar_url} alt="profile" className="w-24 h-24 rounded-[32px] border-4 border-white shadow-2xl group-hover:scale-105 transition-transform" />
+                    <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center text-white border-4 border-white"><FaEdit size={12} /></div>
                   </div>
-                  <div className="editor-title">
-                    <span>{editingFile.path}</span>
-                  </div>
-                </div>
-                <div className="editor-tabs">
-                  <div className="editor-tab">
-                    <File size={14} className="text-blue-400" />
-                    <span>{editingFile.name}</span>
+                  <div className="space-y-1">
+                    <h4 className="text-3xl font-black text-slate-900 tracking-tight">{user?.name || user?.login}</h4>
+                    <p className="text-slate-400 font-bold tracking-widest text-sm uppercase">Personal Drive Account • {user?.email}</p>
                   </div>
                 </div>
-                <div className="editor-actions">
-                  <button className="btn-vscode-outline" onClick={() => setEditingFile(null)}>Cancel</button>
-                  <button className="btn-vscode" onClick={handleSaveFile} disabled={saving}>
-                    {saving ? <Loader2 className="spinner" size={14} /> : <Zap size={14} />}
-                    Save
-                  </button>
+                
+                <div className="p-12 space-y-10">
+                  <div className="space-y-4">
+                    <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Storage Configuration</h5>
+                    <div className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                      <div className="space-y-1">
+                        <p className="font-bold text-slate-800 truncate max-w-xs">{repository}</p>
+                        <p className="text-xs font-bold text-slate-400 italic">Connected storage repository</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          value={repoInput}
+                          onChange={(e) => setRepoInput(e.target.value)}
+                          className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/10 placeholder:font-light"
+                          placeholder="github-drive"
+                        />
+                        <button className="px-6 py-2 bg-blue-600 text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all" onClick={() => updateRepoName(repoInput)}>Update</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 pt-10 border-t border-slate-50">
+                    <h5 className="text-[10px] font-black text-red-400 uppercase tracking-[0.3em]">Session & Security</h5>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button onClick={logout} className="p-8 bg-red-50 hover:bg-red-100 rounded-3xl border border-red-100 transition-all group flex flex-col items-center gap-3">
+                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-red-600 shadow-sm group-hover:scale-110 transition-transform"><FaSignOutAlt size={20} /></div>
+                        <span className="text-sm font-black text-red-600 uppercase tracking-widest">Sign Out Session</span>
+                      </button>
+                      <button onClick={switchGithubAccount} className="p-8 bg-slate-50 hover:bg-slate-100 rounded-3xl border border-slate-100 transition-all group flex flex-col items-center gap-3">
+                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-600 shadow-sm group-hover:scale-110 transition-transform"><FaExternalLinkAlt size={20} /></div>
+                        <span className="text-sm font-black text-slate-600 uppercase tracking-widest">Switch Profile</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
+            </div>
+          )}
+          
+          {/* Default views like recent, docs, folders would follow similar grid-3 patterns with Tailwind */}
+        </div>
+      </main>
+      
+      {/* Modals & Overlays */}
+      {previewFile && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xl z-[100] flex items-center justify-center p-10 animate-in fade-in">
+          <div className="bg-white w-full max-w-5xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95">
+            <div className="px-8 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3 font-bold text-slate-700">
+                <FaImage className="text-blue-500" />
+                <span className="truncate max-w-xs">{previewFile.name}</span>
+              </div>
+              <div className="flex gap-3">
+                <button className="px-5 py-2 text-xs font-black uppercase tracking-widest text-slate-400 hover:text-slate-800 transition-colors" onClick={() => setPreviewFile(null)}>Close</button>
+                <button className="px-6 py-2 bg-blue-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-xl shadow-lg shadow-blue-600/20" onClick={() => window.open(previewFile.download_url, '_blank')}>Open Original</button>
+              </div>
+            </div>
+            <div className="flex-1 bg-slate-100/50 p-6 md:p-12 overflow-y-auto flex items-center justify-center min-h-[50vh]">
+              {previewFile.type === 'image' && (
+                <img src={previewFile.dataUrl} alt={previewFile.name} className="max-w-full max-h-[70vh] rounded-2xl shadow-2xl" />
+              )}
+              {previewFile.type === 'pdf' && (
+                <iframe src={previewFile.dataUrl} title={previewFile.name} className="w-full h-[70vh] rounded-2xl shadow-2xl bg-white" />
+              )}
+              {previewFile.type === 'video' && (
+                <video src={previewFile.dataUrl} controls className="max-w-full max-h-[70vh] rounded-2xl shadow-2xl bg-black" />
+              )}
+              {previewFile.type === 'audio' && (
+                <audio src={previewFile.dataUrl} controls className="w-full max-w-md shadow-xl" />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingFile && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-2xl z-[100] flex items-center justify-center p-6 sm:p-20 animate-in fade-in">
+          <div className="bg-[#1e1e1e] w-full max-w-6xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col border border-white/10 animate-in zoom-in-95">
+            <div className="px-8 py-4 bg-[#252526] border-b border-white/5 flex items-center justify-between">
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2 px-4 py-2 bg-[#1e1e1e] rounded-t-xl border-t-2 border-blue-500">
+                  <FaFileAlt className="text-blue-400" size={14} />
+                  <span className="text-xs font-bold text-white tracking-tight">{editingFile.name}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <button className="text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white transition-colors" onClick={() => setEditingFile(null)}>Discard</button>
+                <button className="px-6 py-2.5 bg-blue-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-xl shadow-2xl shadow-blue-500/40 hover:bg-blue-500 transition-all flex items-center gap-2 active:scale-95" onClick={handleSaveFile}>
+                  {saving ? <FaSpinner className="animate-spin" /> : <FaBolt />}
+                  Save Changes
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 p-0 flex">
+              <div className="w-12 bg-[#333333] border-r border-white/5 flex flex-col items-center py-6 gap-6">
+                <div className="w-6 h-6 text-white/20"><FaFile /></div>
+                <div className="w-6 h-6 text-white/20"><FaSearch /></div>
+                <div className="w-6 h-6 text-white/20"><FaCog /></div>
+              </div>
               <textarea 
-                className="editor-textarea"
+                className="flex-1 bg-transparent text-slate-300 p-10 font-mono text-sm leading-relaxed resize-none outline-none custom-scrollbar"
                 value={editorContent}
                 onChange={(e) => setEditorContent(e.target.value)}
                 spellCheck="false"
-                autoFocus
               />
-              <div className="editor-footer">
-                <div className="footer-item">
-                  <div className="flex items-center gap-1">
-                    <Shield size={12} />
-                    <span>Main</span>
-                  </div>
-                  <span>UTF-8</span>
-                </div>
-                <div className="footer-item">
-                  <span>Spaces: 2</span>
-                  <span>Ln 1, Col 1</span>
-                  <span>JavaScript</span>
-                </div>
+            </div>
+            <div className="px-6 py-2 bg-[#007acc] text-white/80 flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+              <div className="flex items-center gap-4">
+                <span className="flex items-center gap-1.5"><FaShieldAlt size={10} /> main</span>
+                <span className="opacity-50">/</span>
+                <span>UTF-8</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <span>Space: 2</span>
+                <span>Ln 1, Col 1</span>
               </div>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 };
