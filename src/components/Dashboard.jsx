@@ -19,12 +19,55 @@ import {
   FaEllipsisV,
   FaDownload,
   FaEdit,
-  FaEye
+  FaEye,
+  FaFilePdf,
+  FaFileWord,
+  FaFilePowerpoint,
+  FaFileImage,
+  FaFileVideo,
+  FaFileCode,
+  FaFileArchive
 } from 'react-icons/fa';
 import axios from 'axios';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import toast from 'react-hot-toast';
+
+const getFileIcon = (fileName, type) => {
+  if (type === 'dir') return <FaFolder className="text-[#0366d6]" />;
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'pdf': return <FaFilePdf className="text-[#d73a49]" />;
+    case 'doc':
+    case 'docx': return <FaFileWord className="text-[#0366d6]" />;
+    case 'ppt':
+    case 'pptx': return <FaFilePowerpoint className="text-[#f97316]" />;
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+    case 'gif':
+    case 'webp':
+    case 'svg': return <FaFileImage className="text-[#2ea44f]" />;
+    case 'mp4':
+    case 'webm':
+    case 'mp3': return <FaFileVideo className="text-[#0366d6]" />;
+    case 'js':
+    case 'jsx':
+    case 'ts':
+    case 'tsx':
+    case 'html':
+    case 'css':
+    case 'json':
+    case 'md': return <FaFileCode className="text-[#0366d6]" />;
+    case 'zip':
+    case 'rar':
+    case '7z':
+    case 'tar':
+    case 'gz':
+    case 'jar': return <FaFileArchive className="text-[#6a737d]" />;
+    default: return <FaFileAlt className="text-[#959da5]" />;
+  }
+};
 
 const Dashboard = () => {
   const {
@@ -315,28 +358,57 @@ const Dashboard = () => {
     
     const toastId = toast.loading(`Opening ${file.name}...`);
     const ext = file.name.split('.').pop()?.toLowerCase();
-    const isMedia = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp4', 'webm', 'mp3', 'pdf'].includes(ext);
+    
+    // Media types
+    const images = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
+    const videos = ['mp4', 'webm'];
+    const audios = ['mp3', 'wav', 'ogg'];
+    const docs = ['pdf', 'html', 'htm'];
+    const office = ['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'];
+    const textFiles = ['txt', 'md', 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 'py', 'java', 'c', 'cpp', 'sh'];
+    const binaryFiles = ['jar', 'exe', 'bin', 'zip', 'rar', '7z', 'tar', 'gz'];
 
     try {
-      if (isMedia) {
+      if (binaryFiles.includes(ext)) {
+        toast.dismiss(toastId);
+        toast.error('Binary files cannot be previewed. Please download them.');
+        return;
+      }
+
+      if (images.includes(ext) || videos.includes(ext) || audios.includes(ext) || docs.includes(ext)) {
         const response = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
           headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github.raw' },
           responseType: 'blob'
         });
         const blobUrl = URL.createObjectURL(response.data);
-        setPreviewFile({ ...file, dataUrl: blobUrl, mediaType: ext === 'pdf' ? 'pdf' : (['mp4', 'webm'].includes(ext) ? 'video' : 'image') });
+        let mediaType = 'unknown';
+        if (images.includes(ext)) mediaType = 'image';
+        else if (videos.includes(ext)) mediaType = 'video';
+        else if (audios.includes(ext)) mediaType = 'audio';
+        else if (ext === 'pdf') mediaType = 'pdf';
+        else if (['html', 'htm'].includes(ext)) mediaType = 'html';
+
+        toast.dismiss(toastId);
+        setPreviewFile({ ...file, dataUrl: blobUrl, mediaType });
+      } else if (office.includes(ext)) {
+        // Office files via Google Viewer (requires public download URL)
+        const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(file.download_url)}&embedded=true`;
+        toast.dismiss(toastId);
+        setPreviewFile({ ...file, dataUrl: viewerUrl, mediaType: 'office' });
       } else {
+        // Assume text and try to edit
         const response = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
           headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json' }
         });
         const content = decodeURIComponent(escape(window.atob(response.data.content)));
+        toast.dismiss(toastId);
         setEditingFile(file);
         setEditorContent(content);
       }
-      toast.dismiss(toastId);
     } catch (err) {
-       window.open(file.download_url, '_blank');
+       console.error('Preview error:', err);
        toast.dismiss(toastId);
+       window.open(file.download_url, '_blank');
     }
   };
 
@@ -505,8 +577,8 @@ const Dashboard = () => {
               )}
 
               {(activeView === 'mystorage' || activeView === 'dashboard') && (
-                <div className="bg-white border border-[#e1e4e8] rounded shadow-sm overflow-hidden">
-                  <div className="px-6 py-4 flex items-center justify-between border-b border-[#e1e4e8] bg-[#fafbfc]">
+                <div className="bg-white border border-[#e1e4e8] rounded shadow-sm overflow-visible">
+                  <div className="px-6 py-4 flex items-center justify-between border-b border-[#e1e4e8] bg-[#fafbfc] rounded-t">
                     <div className="flex items-center gap-3">
                       {currentPath && (
                         <button onClick={() => {
@@ -526,8 +598,8 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm">
+                  <div className="overflow-x-visible">
+                      <table className="w-full text-left text-sm border-separate border-spacing-0">
                         <thead>
                           <tr className="bg-[#fafbfc] border-b border-[#e1e4e8] text-[#586069]">
                             <th className="px-6 py-3 font-semibold text-xs w-10">
@@ -569,34 +641,59 @@ const Dashboard = () => {
                                 </td>
                                 <td className="px-6 py-3">
                                   <div className="flex items-center gap-3">
-                                    {item.type === 'dir' ? <FaFolder className="text-[#0366d6]" /> : <FaFileAlt className="text-[#959da5]" />}
+                                    {getFileIcon(item.name, item.type)}
                                     <span className={item.type === 'dir' ? 'text-[#0366d6] font-medium hover:underline' : 'text-[#24292e]'}>{item.name}</span>
                                   </div>
                                 </td>
                                 <td className="px-6 py-3 text-right text-[#586069] text-xs">{item.displaySize}</td>
-                                <td className="px-6 py-3 text-right relative">
+                                <td className="px-6 py-3 text-right relative overflow-visible">
                                   <button 
                                     onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === idx ? null : idx); }}
-                                    className="p-2 hover:bg-[#e1e4e8] rounded-full text-[#586069]"
+                                    className="p-2 hover:bg-[#e1e4e8] rounded-full text-[#586069] transition-colors"
                                   >
                                     <FaEllipsisV size={14} />
                                   </button>
                                   
                                   {activeMenu === idx && (
                                     <>
-                                      <div className="fixed inset-0 z-10" onClick={() => setActiveMenu(null)}></div>
-                                      <div className="absolute right-6 top-10 w-44 bg-white border border-[#e1e4e8] rounded shadow-xl z-20 overflow-hidden py-1">
-                                        <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDoubleClick(item); }} className="w-full px-4 py-2 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-2">
-                                          <FaEye className="text-[#586069]" /> Preview / Open
+                                      <div className="fixed inset-0 z-[100]" onClick={() => setActiveMenu(null)}></div>
+                                      <div className="absolute right-6 top-0 w-48 bg-white border border-[#e1e4e8] rounded shadow-xl z-[101] overflow-hidden py-1 translate-x-0">
+                                        <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDoubleClick(item); }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
+                                          <FaEye className="text-[#586069] w-4" /> Preview / Open
                                         </button>
-                                        <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDownload(item); }} className="w-full px-4 py-2 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-2">
-                                          <FaDownload className="text-[#586069]" /> Download
+                                        <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDownload(item); }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
+                                          <FaDownload className="text-[#586069] w-4" /> Download
                                         </button>
-                                        <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleRename(item); }} className="w-full px-4 py-2 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-2">
-                                          <FaEdit className="text-[#586069]" /> Rename
+                                        <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleRename(item); }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
+                                          <FaEdit className="text-[#586069] w-4" /> Rename
                                         </button>
-                                        <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); setSelectedFiles([item.path]); handleDelete(); }} className="w-full px-4 py-2 text-left text-xs hover:bg-[#feeef0] text-[#d73a49] flex items-center gap-2">
-                                          <FaTrash /> Delete
+                                        <div className="h-[1px] bg-[#e1e4e8] my-1"></div>
+                                        <button onClick={(e) => { 
+                                          e.stopPropagation(); 
+                                          setActiveMenu(null); 
+                                          const deleteItem = async () => {
+                                            if (!window.confirm(`Delete "${item.name}"?`)) return;
+                                            const toastId = toast.loading(`Deleting ${item.name}...`);
+                                            try {
+                                              const leaves = await fetchAllLeaves(item);
+                                              for (const file of leaves) {
+                                                await axios.delete(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
+                                                  headers: { Authorization: `Bearer ${githubToken}` },
+                                                  data: { message: `Delete ${file.path}`, sha: file.sha }
+                                                });
+                                              }
+                                              const deletedPaths = leaves.map(f => f.path);
+                                              const updatedFiles = firestoreFiles.filter(f => !deletedPaths.includes(f.path));
+                                              await updateDoc(doc(db, 'users', firebaseUser.uid), { allFiles: updatedFiles });
+                                              toast.success('Deleted successfully', { id: toastId });
+                                              setTimeout(triggerRefresh, 1500);
+                                            } catch (err) {
+                                              toast.error('Deletion failed', { id: toastId });
+                                            }
+                                          };
+                                          deleteItem();
+                                        }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#feeef0] text-[#d73a49] flex items-center gap-3 transition-colors font-semibold">
+                                          <FaTrash className="w-4" /> Delete
                                         </button>
                                       </div>
                                     </>
@@ -715,10 +812,36 @@ const Dashboard = () => {
               <span>{previewFile.name}</span>
               <button onClick={() => setPreviewFile(null)}><FaTimes /></button>
             </div>
-            <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
-              {previewFile.mediaType === 'image' && <img src={previewFile.dataUrl} className="max-w-full max-h-full" />}
-              {previewFile.mediaType === 'video' && <video src={previewFile.dataUrl} controls className="max-w-full" />}
-              {previewFile.mediaType === 'pdf' && <iframe src={previewFile.dataUrl} className="w-full h-full bg-white" />}
+            <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
+              {previewFile.mediaType === 'image' && <img src={previewFile.dataUrl} className="max-w-full max-h-full object-contain shadow-2xl" />}
+              {previewFile.mediaType === 'video' && <video src={previewFile.dataUrl} controls autoPlay className="max-w-full max-h-full" />}
+              {previewFile.mediaType === 'audio' && (
+                <div className="bg-[#1a1a1a] p-12 rounded-xl flex flex-col items-center gap-6 border border-white/10 shadow-2xl">
+                  <div className="w-20 h-20 bg-[#0366d6] rounded-full flex items-center justify-center animate-pulse">
+                    <FaFileVideo size={32} className="text-white" />
+                  </div>
+                  <audio src={previewFile.dataUrl} controls autoPlay className="w-80" />
+                </div>
+              )}
+              {previewFile.mediaType === 'pdf' && <iframe src={previewFile.dataUrl} className="w-full h-full bg-white rounded shadow-inner" />}
+              {previewFile.mediaType === 'html' && (
+                <div className="w-full h-full bg-white rounded overflow-hidden shadow-2xl flex flex-col">
+                  <div className="bg-[#f1f1f1] px-4 py-2 text-[10px] text-[#555] border-b border-[#ddd] flex items-center gap-2">
+                    <div className="flex gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-[#ff5f56]"></div><div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]"></div><div className="w-2.5 h-2.5 rounded-full bg-[#27c93f]"></div></div>
+                    <span className="font-mono">Rendered Preview</span>
+                  </div>
+                  <iframe src={previewFile.dataUrl} title="HTML Preview" className="w-full flex-1" />
+                </div>
+              )}
+              {previewFile.mediaType === 'office' && (
+                <div className="w-full h-full bg-[#525659] p-4 flex flex-col gap-4">
+                  <div className="text-white/70 text-xs text-center flex items-center justify-center gap-2">
+                    <FaShieldAlt size={10} /> 
+                    <span>Live preview powered by Google Docs Viewer</span>
+                  </div>
+                  <iframe src={previewFile.dataUrl} title="Office Preview" className="w-full flex-1 bg-white rounded shadow-2xl" />
+                </div>
+              )}
             </div>
           </div>
         </div>
