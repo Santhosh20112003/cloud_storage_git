@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { useGithub } from '../context/GithubContext';
-import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import {
   FaSpinner,
@@ -199,8 +199,17 @@ const Dashboard = () => {
   }, [firestoreFiles, currentPath]);
 
   const handleCreateFolder = async () => {
-    const folderName = prompt('Enter folder name:');
+    let folderName = prompt('Enter folder name:');
     if (!folderName) return;
+    
+    // Basic folder validation
+    folderName = folderName.trim();
+    if (folderName.includes('/') || folderName.includes('\\')) {
+      return toast.error('Folder name cannot contain slashes');
+    }
+    if (folderName.length > 50) {
+      return toast.error('Folder name is too long');
+    }
     
     const toastId = toast.loading('Creating folder...');
     try {
@@ -228,7 +237,34 @@ const Dashboard = () => {
   };
 
   const processFiles = (files) => {
-    const newUploads = files.map(file => ({
+    const MAX_FILE_SIZE_MB = 100; // Easily configurable limit
+    const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024; 
+    const BANNED_EXTENSIONS = ['exe', 'bat', 'sh', 'msi'];
+
+    const validatedFiles = files.filter(file => {
+      const ext = file.name.split('.').pop().toLowerCase();
+      
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name} exceeds the ${MAX_FILE_SIZE_MB}MB limit.`);
+        return false;
+      }
+      
+      if (BANNED_EXTENSIONS.includes(ext)) {
+        toast.error(`${ext.toUpperCase()} files are restricted for security.`);
+        return false;
+      }
+
+      if (file.name.length > 100) {
+        toast.error(`Filename "${file.name}" is too long.`);
+        return false;
+      }
+
+      return true;
+    });
+
+    if (validatedFiles.length === 0) return;
+
+    const newUploads = validatedFiles.map(file => ({
       id: Math.random().toString(36).substr(2, 9),
       file,
       name: file.name,
@@ -257,6 +293,24 @@ const Dashboard = () => {
           }, {
             headers: { Authorization: `Bearer ${githubToken}` }
           });
+          
+          // Optimization: Update Firestore immediately after successful GitHub upload
+          if (firebaseUser) {
+            const userRef = doc(db, 'users', firebaseUser.uid);
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+              const currentFiles = userSnap.data().allFiles || [];
+              const newFileMeta = {
+                path: uploadPath,
+                type: 'file',
+                lastModified: new Date().toISOString(),
+                size: item.file.size
+              };
+              // Filter out if file already exists in metadata to avoid duplicates
+              const updatedFiles = [...currentFiles.filter(f => f.path !== uploadPath), newFileMeta];
+              await updateDoc(userRef, { allFiles: updatedFiles });
+            }
+          }
           
           setUploadQueue(prev => prev.map(u => u.id === item.id ? { ...u, status: 'completed', progress: 100 } : u));
           toast.success(`${item.name} uploaded`);
@@ -376,11 +430,16 @@ const Dashboard = () => {
       }
 
       if (images.includes(ext) || videos.includes(ext) || audios.includes(ext) || docs.includes(ext)) {
+        // For PDFs, we want to try and show in iframe. 
+        // We use 'blob' for images/videos/audio to avoid issues, but for PDF we can use the raw URL if allowed, or blob.
         const response = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
           headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github.raw' },
           responseType: 'blob'
         });
-        const blobUrl = URL.createObjectURL(response.data);
+        
+        const blob = new Blob([response.data], { type: ext === 'pdf' ? 'application/pdf' : response.data.type });
+        const blobUrl = URL.createObjectURL(blob);
+        
         let mediaType = 'unknown';
         if (images.includes(ext)) mediaType = 'image';
         else if (videos.includes(ext)) mediaType = 'video';
@@ -391,10 +450,11 @@ const Dashboard = () => {
         toast.dismiss(toastId);
         setPreviewFile({ ...file, dataUrl: blobUrl, mediaType });
       } else if (office.includes(ext)) {
-        // Office files via Google Viewer (requires public download URL)
-        const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(file.download_url)}&embedded=true`;
+        // Office files usually can't be read as raw blobs and shown in browser.
+        // Google Viewer needs a publicly accessible URL. 
+        // If the repo is private, download_url will have a token.
         toast.dismiss(toastId);
-        setPreviewFile({ ...file, dataUrl: viewerUrl, mediaType: 'office' });
+        setPreviewFile({ ...file, dataUrl: file.download_url, mediaType: 'office' });
       } else {
         // Assume text and try to edit
         const response = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
@@ -414,6 +474,13 @@ const Dashboard = () => {
 
   const handleSaveFile = async () => {
     if (!editingFile) return;
+    
+    // Safety check for empty content
+    if (!editorContent.trim() && !window.confirm('Save empty file?')) return;
+    if (editorContent.length > 500000) {
+      return toast.error('File content too large for web editor (Max 500KB)');
+    }
+
     setSaving(true);
     const toastId = toast.loading('Saving changes...');
     try {
@@ -502,17 +569,17 @@ const Dashboard = () => {
 
   return (
     <div 
-      className={`flex bg-[#f6f8fa] min-h-screen font-sans text-[#24292e] relative ${dragActive ? 'bg-blue-50' : ''}`}
+      className={`flex bg-[#f6f8fa] min-h-screen font-sans text-[#24292e] relative transition-colors duration-300 ${dragActive ? 'bg-blue-50/50' : ''}`}
       onDragEnter={handleDrag}
       onDragOver={handleDrag}
       onDragLeave={handleDrag}
       onDrop={handleDrop}
     >
       {dragActive && (
-        <div className="fixed inset-0 z-[200] bg-[#0366d6]/10 border-4 border-dashed border-[#0366d6] flex items-center justify-center pointer-events-none">
-          <div className="bg-white p-8 rounded shadow-2xl flex flex-col items-center gap-4">
-            <FaUpload size={48} className="text-[#0366d6] animate-bounce" />
-            <p className="text-xl font-bold text-[#0366d6]">Drop files to upload to {currentPath || 'Root'}</p>
+        <div className="fixed inset-0 z-[200] bg-[#0366d6]/5 backdrop-blur-sm border-4 border-dashed border-[#0366d6]/30 flex items-center justify-center pointer-events-none transition-all duration-300">
+          <div className="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center gap-4 scale-110 animate-bounce">
+            <FaUpload size={48} className="text-[#0366d6]" />
+            <p className="text-xl font-bold text-[#0366d6]">Drop files to upload</p>
           </div>
         </div>
       )}
@@ -549,25 +616,31 @@ const Dashboard = () => {
             <div className="max-w-6xl mx-auto">
               {activeView === 'dashboard' && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                  <div className="bg-white border border-[#e1e4e8] rounded p-6 shadow-sm">
+                  <div className="bg-white border border-[#e1e4e8] rounded-xl p-6 shadow-sm hover:shadow-md transition-all group cursor-default">
                     <div className="flex items-center gap-3 mb-4 text-[#586069]">
-                      <FaHdd size={18} />
+                      <FaHdd size={18} className="group-hover:text-[#24292e] transition-colors" />
                       <span className="text-xs font-bold uppercase tracking-wider">Total Storage</span>
                     </div>
                     <div className="text-2xl font-bold">1.0 GB</div>
                     <p className="text-xs text-[#586069] mt-1">Enterprise Plan</p>
                   </div>
-                  <div className="bg-white border border-[#e1e4e8] rounded p-6 shadow-sm">
+                  <div className="bg-white border border-[#e1e4e8] rounded-xl p-6 shadow-sm hover:shadow-md transition-all group cursor-default">
                     <div className="flex items-center gap-3 mb-4 text-[#0366d6]">
-                      <FaLayerGroup size={18} />
+                      <FaLayerGroup size={18} className="group-hover:scale-110 transition-transform" />
                       <span className="text-xs font-bold uppercase tracking-wider">Used Space</span>
                     </div>
                     <div className="text-2xl font-bold">{(totalSizeBytes/(1024*1024)).toFixed(1)} MB</div>
-                    <p className="text-xs text-[#586069] mt-1">{percentage.toFixed(2)}% Capacity</p>
+                    <div className="mt-4 w-full bg-[#e1e4e8] h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-[#0366d6] transition-all duration-1000 ease-out"
+                        style={{ width: `${percentage}%` }}
+                      ></div>
+                    </div>
+                    <p className="text-xs text-[#586069] mt-2">{percentage.toFixed(2)}% Capacity</p>
                   </div>
-                  <div className="bg-white border border-[#e1e4e8] rounded p-6 shadow-sm">
+                  <div className="bg-white border border-[#e1e4e8] rounded-xl p-6 shadow-sm hover:shadow-md transition-all group cursor-default">
                     <div className="flex items-center gap-3 mb-4 text-[#2ea44f]">
-                      <FaCheck size={18} />
+                      <FaCheck size={18} className="group-hover:rotate-12 transition-transform" />
                       <span className="text-xs font-bold uppercase tracking-wider">Status</span>
                     </div>
                     <div className="text-2xl font-bold">Optimal</div>
@@ -620,18 +693,22 @@ const Dashboard = () => {
                             <tr><td colSpan="4" className="px-6 py-8 text-center text-[#586069]"><FaSpinner className="animate-spin inline mr-2" /> Initializing storage...</td></tr>
                           ) : filteredItems.length === 0 ? (
                             <tr><td colSpan="4" className="px-6 py-12 text-center text-[#586069]">
-                              <div className="flex flex-col items-center gap-2">
+                              <div className="flex flex-col items-center gap-2 animate-in fade-in zoom-in duration-300">
                                 <FaFolder size={32} className="text-[#e1e4e8]" />
                                 <p>No files found in this directory.</p>
                               </div>
                             </td></tr>
                           ) : (
                             filteredItems.map((item, idx) => (
-                              <tr key={idx} onDoubleClick={() => handleDoubleClick(item)} className={`hover:bg-[#f6f8fa] group cursor-pointer ${selectedFiles.includes(item.path) ? 'bg-[#f1f8ff]' : ''}`}>
+                              <tr 
+                                key={idx} 
+                                onDoubleClick={() => handleDoubleClick(item)} 
+                                className={`hover:bg-[#f6f8fbb0] group cursor-pointer transition-colors duration-150 ${selectedFiles.includes(item.path) ? 'bg-[#f1f8ff]' : ''}`}
+                              >
                                 <td className="px-6 py-3">
                                   <input 
                                     type="checkbox" 
-                                    className="rounded border-[#e1e4e8]" 
+                                    className="rounded border-[#e1e4e8] transition-all group-hover:border-[#0366d6]" 
                                     checked={selectedFiles.includes(item.path)} 
                                     onChange={(e) => {
                                       e.stopPropagation();
@@ -640,7 +717,7 @@ const Dashboard = () => {
                                   />
                                 </td>
                                 <td className="px-6 py-3">
-                                  <div className="flex items-center gap-3">
+                                  <div className="flex items-center gap-3 transition-transform duration-200 group-hover:translate-x-1">
                                     {getFileIcon(item.name, item.type)}
                                     <span className={item.type === 'dir' ? 'text-[#0366d6] font-medium hover:underline' : 'text-[#24292e]'}>{item.name}</span>
                                   </div>
@@ -750,9 +827,9 @@ const Dashboard = () => {
           </div>
           <div className="max-h-60 overflow-y-auto p-2 space-y-2">
             {uploadQueue.map(item => (
-              <div key={item.id} className="flex items-center gap-3 p-2 bg-[#f6f8fa] border border-[#e1e4e8] rounded">
+              <div key={item.id} className="flex items-center gap-3 p-2 bg-[#f6f8fa] border border-[#e1e4e8] rounded-lg transition-all animate-in slide-in-from-right-full duration-300">
                 {item.preview ? (
-                  <img src={item.preview} className="w-10 h-10 object-cover rounded border border-[#e1e4e8]" />
+                  <img src={item.preview} className="w-10 h-10 object-cover rounded shadow-sm border border-[#e1e4e8]" />
                 ) : (
                   <div className="w-10 h-10 bg-white border border-[#e1e4e8] rounded flex items-center justify-center text-[#959da5]">
                     <FaFileAlt size={16} />
@@ -806,24 +883,52 @@ const Dashboard = () => {
 
       {/* Media Preview */}
       {previewFile && (
-        <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4" onClick={() => setPreviewFile(null)}>
-          <div className="bg-black max-w-4xl w-full max-h-[90vh] flex flex-col rounded overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="h-10 px-4 flex items-center justify-between bg-black/50 border-b border-white/10 text-white text-xs">
-              <span>{previewFile.name}</span>
-              <button onClick={() => setPreviewFile(null)}><FaTimes /></button>
+        <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center sm:p-4 backdrop-blur-sm transition-all duration-300 animate-in fade-in" onClick={() => setPreviewFile(null)}>
+          <div className="bg-[#0d1117] w-full h-full sm:max-w-[95vw] sm:max-h-[95vh] flex flex-col sm:rounded-xl overflow-hidden border border-white/10 shadow-2xl animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
+            <div className="h-12 px-6 flex items-center justify-between bg-[#161b22] border-b border-white/10 text-white">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium truncate max-w-[200px] sm:max-w-md">{previewFile.name}</span>
+                <span className="text-[10px] px-2 py-0.5 bg-white/10 rounded-full text-white/60 uppercase tracking-widest leading-none">
+                  {previewFile.mediaType}
+                </span>
+              </div>
+              <button 
+                onClick={() => setPreviewFile(null)}
+                className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/70 hover:text-white"
+              >
+                <FaTimes size={18} />
+              </button>
             </div>
-            <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
-              {previewFile.mediaType === 'image' && <img src={previewFile.dataUrl} className="max-w-full max-h-full object-contain shadow-2xl" />}
+            <div className="flex-1 flex items-center justify-center p-2 sm:p-6 overflow-hidden relative bg-[#090c10]">
+              {previewFile.mediaType === 'image' && <img src={previewFile.dataUrl} className="max-w-full max-h-full object-contain" alt="Preview" />}
               {previewFile.mediaType === 'video' && <video src={previewFile.dataUrl} controls autoPlay className="max-w-full max-h-full" />}
               {previewFile.mediaType === 'audio' && (
-                <div className="bg-[#1a1a1a] p-12 rounded-xl flex flex-col items-center gap-6 border border-white/10 shadow-2xl">
-                  <div className="w-20 h-20 bg-[#0366d6] rounded-full flex items-center justify-center animate-pulse">
-                    <FaFileVideo size={32} className="text-white" />
+                <div className="bg-[#161b22] p-12 rounded-2xl flex flex-col items-center gap-8 border border-white/10 shadow-2xl">
+                  <div className="w-24 h-24 bg-[#1f6feb] rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(31,111,235,0.3)] animate-pulse">
+                    <FaFileVideo size={40} className="text-white" />
                   </div>
                   <audio src={previewFile.dataUrl} controls autoPlay className="w-80" />
                 </div>
               )}
-              {previewFile.mediaType === 'pdf' && <iframe src={previewFile.dataUrl} className="w-full h-full bg-white rounded shadow-inner" />}
+              {previewFile.mediaType === 'pdf' && (
+                <object 
+                  data={previewFile.dataUrl} 
+                  type="application/pdf" 
+                  className="w-full h-full bg-white rounded-lg"
+                >
+                  <div className="flex flex-col items-center justify-center h-full text-white p-8 text-center bg-[#0d1117]">
+                    <FaFilePdf size={64} className="mb-6 text-[#f85149]" />
+                    <h3 className="text-xl font-bold mb-2">Enhanced PDF Viewer</h3>
+                    <p className="mb-8 text-white/60 max-w-sm">Direct preview is restricted. Open the document in a full window to view all pages and features.</p>
+                    <button 
+                      onClick={() => window.open(previewFile.dataUrl, '_blank')}
+                      className="px-8 py-3 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded-lg font-bold transition-all shadow-lg"
+                    >
+                      Open Document
+                    </button>
+                  </div>
+                </object>
+              )}
               {previewFile.mediaType === 'html' && (
                 <div className="w-full h-full bg-white rounded overflow-hidden shadow-2xl flex flex-col">
                   <div className="bg-[#f1f1f1] px-4 py-2 text-[10px] text-[#555] border-b border-[#ddd] flex items-center gap-2">
@@ -834,12 +939,29 @@ const Dashboard = () => {
                 </div>
               )}
               {previewFile.mediaType === 'office' && (
-                <div className="w-full h-full bg-[#525659] p-4 flex flex-col gap-4">
-                  <div className="text-white/70 text-xs text-center flex items-center justify-center gap-2">
-                    <FaShieldAlt size={10} /> 
-                    <span>Live preview powered by Google Docs Viewer</span>
-                  </div>
-                  <iframe src={previewFile.dataUrl} title="Office Preview" className="w-full flex-1 bg-white rounded shadow-2xl" />
+                <div className="w-full h-full bg-[#f6f8fa] flex flex-col items-center justify-center p-8 text-center">
+                   <div className="bg-white p-10 rounded-xl shadow-2xl border border-[#e1e4e8] max-w-sm">
+                      <FaFileWord size={64} className="mx-auto mb-6 text-[#0366d6]" />
+                      <h3 className="text-xl font-bold mb-2">Office Document</h3>
+                      <p className="text-[#586069] text-sm mb-8">
+                        Direct preview for {previewFile.name.split('.').pop().toUpperCase()} files is restricted for security. 
+                        You can view it using Google Docs or download it.
+                      </p>
+                      <div className="flex flex-col gap-3">
+                        <button 
+                          onClick={() => window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(previewFile.dataUrl)}`, '_blank')}
+                          className="w-full py-2.5 bg-[#0366d6] text-white rounded font-semibold hover:bg-[#0256b9]"
+                        >
+                          View via Google Docs
+                        </button>
+                        <button 
+                          onClick={() => handleDownload(previewFile)}
+                          className="w-full py-2.5 border border-[#e1e4e8] text-[#24292e] rounded font-semibold hover:bg-[#f6f8fa]"
+                        >
+                          Download File
+                        </button>
+                      </div>
+                   </div>
                 </div>
               )}
             </div>
