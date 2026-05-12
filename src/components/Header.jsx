@@ -29,20 +29,8 @@ const Header = ({ sidebarOpen, setSidebarOpen, activeView }) => {
       </div>
 
       <div className="flex items-center gap-4">
-        <div className="hidden md:flex items-center gap-2 px-3 h-8 bg-[#fafbfc] border border-[#e1e4e8] rounded focus-within:border-[#0366d6] focus-within:ring-1 focus-within:ring-[#0366d6] transition-all">
-          <FaSearch className="text-[#959da5]" size={12} />
-          <input 
-            type="text" 
-            placeholder="Search files..." 
-            className="bg-transparent border-none outline-none text-xs text-[#24292e] placeholder:text-[#959da5] w-64"
-          />
-        </div>
 
         <div className="flex items-center gap-3">
-          <button className="p-2 text-[#586069] hover:text-[#0366d6] transition-colors relative">
-            <FaBell size={14} />
-            <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-[#d73a49] rounded-full border border-white"></span>
-          </button>
           
           <div className="h-4 w-px bg-[#e1e4e8]"></div>
           

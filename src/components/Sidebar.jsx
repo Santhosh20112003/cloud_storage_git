@@ -24,7 +24,7 @@ const Sidebar = ({ activeView, setActiveView, usedStorage, totalStorage, percent
         <div className="h-14 flex items-center justify-between px-6 border-b border-[#e9ecef] bg-white">
           <div className="flex items-center gap-2">
             <FaCloud className="text-[#0366d6]" size={18} />
-            <span className="font-semibold text-sm tracking-tight text-[#24292e]">CloudStorage</span>
+            <span className="font-semibold text-sm tracking-tight text-[#24292e]">Cloud Drive</span>
           </div>
           <button className="lg:hidden text-slate-400" onClick={() => setIsOpen(false)}>
             <FaTimes size={16} />

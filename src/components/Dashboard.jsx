@@ -19,6 +19,7 @@ import {
   FaEllipsisV,
   FaDownload,
   FaEdit,
+  FaSearch,
   FaEye,
   FaFilePdf,
   FaFileWord,
@@ -35,7 +36,7 @@ import toast from 'react-hot-toast';
 
 const getFileIcon = (fileName, type) => {
   if (type === 'dir') return <FaFolder className="text-[#0366d6]" />;
-  const ext = fileName.split('.').pop()?.toLowerCase();
+  const ext = fileName?.split('.').pop()?.toLowerCase();
   switch (ext) {
     case 'pdf': return <FaFilePdf className="text-[#d73a49]" />;
     case 'doc':
@@ -88,6 +89,7 @@ const Dashboard = () => {
   const [editingFile, setEditingFile] = React.useState(null);
   const [editorContent, setEditorContent] = React.useState('');
   const [previewFile, setPreviewFile] = React.useState(null);
+  const [detailsFile, setDetailsFile] = React.useState(null);
   const [currentPath, setCurrentPath] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -98,6 +100,8 @@ const Dashboard = () => {
   const [dragActive, setDragActive] = React.useState(false);
   const [uploadQueue, setUploadQueue] = React.useState([]);
   const [activeMenu, setActiveMenu] = React.useState(null);
+  const [sortBy, setSortBy] = React.useState('name'); // 'name', 'date', 'size'
+  const [filterType, setFilterType] = React.useState('all'); // 'all', 'image', 'video', 'pdf', 'doc'
   
   const fileInputRef = useRef(null);
   const repository = repoName || 'github-drive';
@@ -190,13 +194,21 @@ const Dashboard = () => {
 
   // Filter items based on path from Firestore master list
   const displayItems = React.useMemo(() => {
+    if (activeView === 'dashboard') {
+      // Show only top 5 recently modified files across all paths
+      return [...firestoreFiles]
+        .filter(f => f.type === 'file')
+        .sort((a, b) => new Date(b.lastModified || 0) - new Date(a.lastModified || 0))
+        .slice(0, 5);
+    }
+    
     return firestoreFiles.filter(file => {
       const pathParts = file.path.split('/');
       const fileName = pathParts.pop();
       const parentPath = pathParts.join('/');
       return parentPath === currentPath;
     });
-  }, [firestoreFiles, currentPath]);
+  }, [firestoreFiles, currentPath, activeView]);
 
   const handleCreateFolder = async () => {
     let folderName = prompt('Enter folder name:');
@@ -560,12 +572,39 @@ const Dashboard = () => {
   const totalSizeBytes = firestoreFiles.reduce((acc, item) => acc + (item.size || 0), 0);
   const percentage = (totalSizeBytes / totalLimitBytes) * 100;
 
-  const filteredItems = displayItems
-    .filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    .map(i => ({
+  const filteredItems = React.useMemo(() => {
+    let result = [...displayItems];
+
+    // Search Filter
+    if (searchQuery) {
+      result = result.filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    }
+
+    // Type Filter
+    if (filterType !== 'all') {
+      result = result.filter(i => {
+        const ext = i.name.split('.').pop()?.toLowerCase();
+        if (filterType === 'image') return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext);
+        if (filterType === 'video') return ['mp4', 'webm'].includes(ext);
+        if (filterType === 'pdf') return ext === 'pdf';
+        if (filterType === 'doc') return ['doc', 'docx', 'txt', 'md'].includes(ext);
+        return true;
+      });
+    }
+
+    // Sorting
+    result.sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'date') return new Date(b.lastModified || 0) - new Date(a.lastModified || 0);
+      if (sortBy === 'size') return (b.size || 0) - (a.size || 0);
+      return 0;
+    });
+
+    return result.map(i => ({
       ...i,
       displaySize: i.type === 'dir' ? '--' : (i.size / 1024 < 1024 ? `${(i.size / 1024).toFixed(1)} KB` : `${(i.size / (1024 * 1024)).toFixed(1)} MB`)
     }));
+  }, [displayItems, searchQuery, filterType, sortBy]);
 
   return (
     <div 
@@ -651,23 +690,61 @@ const Dashboard = () => {
 
               {(activeView === 'mystorage' || activeView === 'dashboard') && (
                 <div className="bg-white border border-[#e1e4e8] rounded shadow-sm overflow-visible">
-                  <div className="px-6 py-4 flex items-center justify-between border-b border-[#e1e4e8] bg-[#fafbfc] rounded-t">
-                    <div className="flex items-center gap-3">
-                      {currentPath && (
-                        <button onClick={() => {
-                          const parts = currentPath.split('/'); parts.pop(); setCurrentPath(parts.join('/'));
-                        }} className="p-1.5 text-[#586069] hover:bg-[#f3f4f6] rounded"><FaArrowLeft size={12} /></button>
-                      )}
-                      <span className="text-sm font-semibold">{activeView === 'dashboard' ? 'Recent Files' : `/ ${currentPath || 'Root'}`}</span>
+                  <div className="px-6 py-4 flex flex-col gap-4 border-b border-[#e1e4e8] bg-[#fafbfc] rounded-t">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {currentPath && (
+                          <button onClick={() => {
+                            const parts = currentPath.split('/'); parts.pop(); setCurrentPath(parts.join('/'));
+                          }} className="p-1.5 text-[#586069] hover:bg-[#f3f4f6] rounded transition-colors"><FaArrowLeft size={12} /></button>
+                        )}
+                        <span className="text-sm font-semibold">{activeView === 'dashboard' ? 'Recent Files' : `/ ${currentPath || 'Root'}`}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        {selectedFiles.length > 0 && (
+                          <button onClick={handleDelete} className="px-3 py-1.5 bg-white border border-[#d73a49] text-[#d73a49] text-xs font-semibold rounded hover:bg-[#feeef0] flex items-center gap-2 transition-colors"><FaTrash /> Delete</button>
+                        )}
+                        <>
+                          <button onClick={handleCreateFolder} className="px-3 py-1.5 bg-white border border-[#e1e4e8] text-[#24292e] text-xs font-semibold rounded hover:bg-[#f3f4f6] flex items-center gap-2 transition-colors"><FaFolderPlus /> New Folder</button>
+                          <button onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 bg-[#2ea44f] text-white text-xs font-semibold rounded border border-[#2c974b] hover:bg-[#2c974b] flex items-center gap-2 transition-colors"><FaUpload /> Upload</button>
+                        </>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      {selectedFiles.length > 0 && (
-                        <button onClick={handleDelete} className="px-3 py-1.5 bg-white border border-[#d73a49] text-[#d73a49] text-xs font-semibold rounded hover:bg-[#feeef0] flex items-center gap-2"><FaTrash /> Delete</button>
-                      )}
-                      <>
-                        <button onClick={handleCreateFolder} className="px-3 py-1.5 bg-white border border-[#e1e4e8] text-[#24292e] text-xs font-semibold rounded hover:bg-[#f3f4f6] flex items-center gap-2"><FaFolderPlus /> New Folder</button>
-                        <button onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 bg-[#2ea44f] text-white text-xs font-semibold rounded border border-[#2c974b] hover:bg-[#2c974b] flex items-center gap-2"><FaUpload /> Upload</button>
-                      </>
+                    
+                    {/* Search and Filters Bar */}
+                    <div className="flex flex-wrap items-center gap-3 pt-2">
+                      <div className="relative flex-1 min-w-[200px]">
+                        <input 
+                          type="text"
+                          placeholder="Search files..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full pl-9 pr-3 py-1.5 bg-white border border-[#e1e4e8] rounded-lg text-sm focus:ring-2 focus:ring-[#0366d6]/20 focus:border-[#0366d6] outline-none transition-all"
+                        />
+                        <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[#959da5]" size={14} />
+                      </div>
+                      
+                      <select 
+                        value={filterType}
+                        onChange={(e) => setFilterType(e.target.value)}
+                        className="px-3 py-1.5 bg-white border border-[#e1e4e8] rounded-lg text-xs font-medium text-[#586069] outline-none hover:border-[#0366d6] transition-colors cursor-pointer"
+                      >
+                        <option value="all">All Types</option>
+                        <option value="image">Images</option>
+                        <option value="video">Videos</option>
+                        <option value="pdf">PDFs</option>
+                        <option value="doc">Documents</option>
+                      </select>
+
+                      <select 
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="px-3 py-1.5 bg-white border border-[#e1e4e8] rounded-lg text-xs font-medium text-[#586069] outline-none hover:border-[#0366d6] transition-colors cursor-pointer"
+                      >
+                        <option value="name">Sort by Name</option>
+                        <option value="date">Sort by Recent</option>
+                        <option value="size">Sort by Size</option>
+                      </select>
                     </div>
                   </div>
 
@@ -722,7 +799,9 @@ const Dashboard = () => {
                                     <span className={item.type === 'dir' ? 'text-[#0366d6] font-medium hover:underline' : 'text-[#24292e]'}>{item.name}</span>
                                   </div>
                                 </td>
-                                <td className="px-6 py-3 text-right text-[#586069] text-xs">{item.displaySize}</td>
+                                <td className="px-6 py-3 text-right text-[#586069] text-xs font-medium">
+                                  {item.displaySize}
+                                </td>
                                 <td className="px-6 py-3 text-right relative overflow-visible">
                                   <button 
                                     onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === idx ? null : idx); }}
@@ -737,6 +816,9 @@ const Dashboard = () => {
                                       <div className="absolute right-6 top-0 w-48 bg-white border border-[#e1e4e8] rounded shadow-xl z-[101] overflow-hidden py-1 translate-x-0">
                                         <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDoubleClick(item); }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
                                           <FaEye className="text-[#586069] w-4" /> Preview / Open
+                                        </button>
+                                        <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); setDetailsFile(item); }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
+                                          <FaLayerGroup className="text-[#586069] w-4" /> Properties
                                         </button>
                                         <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDownload(item); }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
                                           <FaDownload className="text-[#586069] w-4" /> Download
@@ -964,6 +1046,79 @@ const Dashboard = () => {
                    </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Details Side Panel */}
+      {detailsFile && (
+        <div className="fixed inset-0 bg-black/20 z-[110] flex justify-end" onClick={() => setDetailsFile(null)}>
+          <div className="bg-white w-full max-w-md h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-[#e1e4e8] flex items-center justify-between bg-[#fafbfc]">
+              <h3 className="font-bold text-gray-900">File Details</h3>
+              <button onClick={() => setDetailsFile(null)} className="p-2 hover:bg-[#f3f4f6] rounded transition-colors">
+                <FaTimes className="text-[#586069]" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-8">
+              <div className="flex flex-col items-center mb-10 text-center">
+                <div className="w-20 h-20 bg-[#f6f8fa] border border-[#e1e4e8] rounded-2xl flex items-center justify-center text-[#0366d6] mb-4 shadow-sm">
+                  {detailsFile.type === 'dir' ? <FaFolder size={40} /> : <FaFileAlt size={40} className="text-[#959da5]" />}
+                </div>
+                <h4 className="text-lg font-bold text-gray-900 break-all">{detailsFile.name}</h4>
+                <p className="text-sm text-[#586069] mt-1">{detailsFile.type === 'dir' ? 'Folder' : 'Document'}</p>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <h5 className="text-[10px] uppercase font-bold text-[#586069] tracking-widest mb-2 px-1">Meta Information</h5>
+                  <div className="bg-[#f6f8fa] border border-[#e1e4e8] rounded-xl overflow-hidden divide-y divide-[#e1e4e8]">
+                    <div className="flex justify-between px-4 py-3 text-sm">
+                      <span className="text-[#586069]">Size</span>
+                      <span className="font-semibold">{detailsFile.displaySize}</span>
+                    </div>
+                    <div className="flex justify-between px-4 py-3 text-sm">
+                      <span className="text-[#586069]">Type</span>
+                      <span className="font-semibold uppercase text-[10px] bg-[#e1e4e8] px-2 py-0.5 rounded">{detailsFile.name.split('.').pop() || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between px-4 py-3 text-sm">
+                      <span className="text-[#586069]">SHA-1</span>
+                      <span className="font-mono text-[10px] text-[#0366d6] truncate ml-4 max-w-[140px] bg-white px-2 py-1 rounded border border-[#e1e4e8]" title={detailsFile.sha}>
+                        {detailsFile.sha}
+                      </span>
+                    </div>
+                    <div className="flex justify-between px-4 py-3 text-sm">
+                      <span className="text-[#586069]">Modified</span>
+                      <span className="font-semibold">{detailsFile.lastModified ? new Date(detailsFile.lastModified).toLocaleString() : 'Just now'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h5 className="text-[10px] uppercase font-bold text-[#586069] tracking-widest mb-2 px-1">Location</h5>
+                  <div className="bg-[#f6f8fa] border border-[#e1e4e8] rounded-xl p-4">
+                    <p className="text-xs font-mono text-[#586069] break-all leading-relaxed">
+                      {detailsFile.path}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-4 space-y-3">
+                  <button 
+                    onClick={() => { window.open(detailsFile.download_url || '#', '_blank'); }}
+                    disabled={detailsFile.type === 'dir'}
+                    className="w-full py-2.5 bg-[#2ea44f] text-white text-sm font-semibold rounded-lg hover:bg-[#2c974b] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <FaDownload size={14} /> Download File
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 bg-[#fafbfc] border-t border-[#e1e4e8]">
+              <p className="text-[10px] text-[#586069] text-center italic">
+                Verified via GitHub Enterprise Blockchain
+              </p>
             </div>
           </div>
         </div>
