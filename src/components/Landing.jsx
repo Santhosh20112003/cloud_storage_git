@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import { useGithub } from '../context/GithubContext';
-import { FaGoogle, FaShieldAlt, FaBolt, FaDatabase, FaFile, FaGithub } from 'react-icons/fa';
+import { FaGoogle, FaCloud, FaShieldAlt } from 'react-icons/fa';
 
 const Landing = () => {
   const {
     registerWithEmail,
     signInWithEmail,
     signInWithGoogle,
-    user,
     error,
     loadingAuth,
   } = useGithub();
@@ -27,103 +26,47 @@ const Landing = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row overflow-hidden font-sans text-slate-900">
-      {/* Auth Left */}
-      <div className="hidden md:flex md:w-1/2 bg-blue-600 p-12 flex-col justify-between text-white relative overflow-hidden">
-        <div className="z-10">
-          <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-sm border border-white/20">
-            <FaGithub size={28} className="text-white" />
-          </div>
-        </div>
-        
-        <div className="z-10 max-w-lg">
-          <h1 className="text-5xl font-bold leading-tight mb-6">
-            Scale your<br />
-            <span className="text-blue-200">cloud drive.</span>
+    <div className="min-h-screen bg-[#fafbfc] flex items-center justify-center p-4 font-sans text-[#24292e]">
+      <div className="w-full max-w-[400px] space-y-6">
+        <div className="text-center space-y-4">
+          <FaCloud className="text-[#0366d6] mx-auto" size={48} />
+          <h1 className="text-2xl font-light tracking-tight">
+            {isRegister ? 'Join CloudStorage' : 'Sign in to CloudStorage'}
           </h1>
-          <p className="text-xl text-blue-100/90 leading-relaxed font-light">
-            Sign in with your Firebase account or Google to keep your profile secure and connected.
-          </p>
         </div>
 
-        {/* Orbit Decoration - Tailwind version */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] opacity-20 pointer-events-none">
-          <div className="absolute inset-0 border border-white rounded-full animate-[spin_20s_linear_infinite]" />
-          <div className="absolute inset-12 border border-white/60 rounded-full animate-[spin_15s_linear_infinite_reverse]" />
-          <div className="absolute inset-24 border border-white/30 rounded-full animate-[spin_10s_linear_infinite]" />
-          
-          <div className="absolute top-0 left-1/2 -ml-3 bg-white text-blue-600 p-2 rounded-lg shadow-xl"><FaFile size={16} /></div>
-          <div className="absolute bottom-1/4 right-0 bg-white text-blue-600 p-2 rounded-lg shadow-xl"><FaShieldAlt size={16} /></div>
-        </div>
-
-        <div className="z-10 flex gap-6 text-sm text-blue-200 font-medium">
-          <span className="cursor-pointer hover:text-white transition-colors">Privacy Policy</span>
-          <span className="cursor-pointer hover:text-white transition-colors">Terms of Service</span>
-        </div>
-      </div>
-
-      {/* Auth Right */}
-      <div className="flex-1 flex items-center justify-center p-6 md:p-12 lg:p-24 bg-white">
-        <div className="w-full max-w-md space-y-8">
-          <div className="space-y-2">
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900">
-              {isRegister ? 'Create your account' : 'Sign in to GitHub Drive'}
-            </h2>
-            <p className="text-slate-500">
-              {isRegister
-                ? 'Register with email and password, then link your GitHub repository in the dashboard.'
-                : 'Login with email/password or Google to continue.'}
-            </p>
-          </div>
-
-          <div className="flex bg-slate-100 p-1 rounded-xl">
-            <button
-              type="button"
-              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${!isRegister ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              onClick={() => setIsRegister(false)}
-            >
-              Login
-            </button>
-            <button
-              type="button"
-              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${isRegister ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              onClick={() => setIsRegister(true)}
-            >
-              Register
-            </button>
-          </div>
-
+        <div className="bg-white border border-[#e1e4e8] rounded-md p-6 shadow-sm">
           <form className="space-y-4" onSubmit={handleSubmit}>
             {isRegister && (
-              <div className="space-y-1.5">
-                <span className="text-sm font-semibold text-slate-700 ml-1">Username</span>
+              <div className="space-y-1">
+                <label className="text-sm font-semibold block ml-0.5">Username</label>
                 <input
                   type="text"
-                  placeholder="Choose a username"
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                  className="w-full px-3 py-1.5 bg-white border border-[#e1e4e8] rounded-md focus:border-[#0366d6] focus:ring-1 focus:ring-[#0366d6] outline-none text-sm transition-all"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
                 />
               </div>
             )}
-            <div className="space-y-1.5">
-              <span className="text-sm font-semibold text-slate-700 ml-1">Email</span>
+            <div className="space-y-1">
+              <label className="text-sm font-semibold block ml-0.5">Email address</label>
               <input
                 type="email"
-                placeholder="you@example.com"
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                className="w-full px-3 py-1.5 bg-white border border-[#e1e4e8] rounded-md focus:border-[#0366d6] focus:ring-1 focus:ring-[#0366d6] outline-none text-sm transition-all"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
-            <div className="space-y-1.5">
-              <span className="text-sm font-semibold text-slate-700 ml-1">Password</span>
+            <div className="space-y-1">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-semibold block ml-0.5">Password</label>
+                {!isRegister && <span className="text-xs text-[#0366d6] hover:underline cursor-pointer">Forgot password?</span>}
+              </div>
               <input
                 type="password"
-                placeholder="Enter your password"
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                className="w-full px-3 py-1.5 bg-white border border-[#e1e4e8] rounded-md focus:border-[#0366d6] focus:ring-1 focus:ring-[#0366d6] outline-none text-sm transition-all"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -132,41 +75,49 @@ const Landing = () => {
 
             <button 
               type="submit" 
-              className="w-full py-3 px-4 bg-slate-900 text-white font-semibold rounded-xl hover:bg-slate-800 transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none" 
+              className="w-full py-2 px-4 bg-[#2ea44f] text-white font-semibold rounded-md hover:bg-[#2c974b] transition-all disabled:opacity-50 text-sm shadow-sm border border-[rgba(27,31,35,0.15)]"
               disabled={loadingAuth}
             >
               {isRegister ? 'Create account' : 'Sign in'}
             </button>
           </form>
 
-          <div className="relative">
+          <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-slate-200"></span>
+              <span className="w-full border-t border-[#e1e4e8]"></span>
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-slate-500">or</span>
+              <span className="bg-white px-3 text-[#6a737d]">Or continue with</span>
             </div>
           </div>
 
           <button
             type="button"
-            className="w-full py-3 px-4 bg-white border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+            className="w-full py-2 px-4 bg-white border border-[#e1e4e8] text-[#24292e] font-semibold rounded-md hover:bg-[#f6f8fa] transition-all flex items-center justify-center gap-2 text-sm shadow-sm"
             onClick={signInWithGoogle}
             disabled={loadingAuth}
           >
-            <FaGoogle size={18} className="text-red-500" />
-            Continue with Google
+            <FaGoogle className="text-[#db4437]" size={14} />
+            Google
           </button>
+        </div>
 
-          {error && (
-            <div className="p-4 bg-red-50 border border-red-100 text-red-600 rounded-xl text-sm font-medium animate-in fade-in slide-in-from-top-1">
-              {error}
-            </div>
-          )}
+        {error && (
+          <div className="p-3 bg-[#ffeef0] border border-[#fdb8c0] text-[#d73a49] rounded-md text-xs font-medium text-center">
+            {error}
+          </div>
+        )}
 
-          <footer className="pt-8 text-center text-xs text-slate-400">
-            By signing in, you agree to GitHub Drive's <span className="underline cursor-pointer decoration-slate-300 hover:text-slate-600">Privacy Policy</span>
-          </footer>
+        <div className="bg-white border border-[#e1e4e8] rounded-md p-4 text-center">
+          <p className="text-sm">
+            {isRegister ? 'Already have an account?' : 'New to CloudStorage?'}
+            <button
+              onClick={() => setIsRegister(!isRegister)}
+              className="ml-2 text-[#0366d6] hover:underline font-medium"
+            >
+              {isRegister ? 'Sign in' : 'Create an account'}
+            </button>
+          </p>
         </div>
       </div>
     </div>

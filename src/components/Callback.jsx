@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useGithub } from '../context/GithubContext';
 import { FaSpinner, FaBolt, FaCheckCircle } from 'react-icons/fa';
@@ -9,7 +9,10 @@ const Callback = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const calledRef = useRef(false);
+
   useEffect(() => {
+    if (calledRef.current) return;
     const params = new URLSearchParams(location.search);
     const code = params.get('code');
 
@@ -25,6 +28,7 @@ const Callback = () => {
           }
         }, 2000);
       };
+      calledRef.current = true;
       exchangeCode();
     } else {
         navigate('/');

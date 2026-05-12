@@ -22,16 +22,16 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 export const GithubProvider = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [user, setUser] = useState(null);
-  const [githubToken, setGithubToken] = useState(localStorage.getItem('gh_token') || null);
-  const [githubUsername, setGithubUsername] = useState(localStorage.getItem('github_username') || '');
-  const [repoName, setRepoName] = useState(localStorage.getItem('github_repo_name') || 'github-drive');
+  const [githubToken, setGithubToken] = useState(null);
+  const [githubUsername, setGithubUsername] = useState('');
+  const [repoName, setRepoName] = useState('github-drive');
   const [repoStatus, setRepoStatus] = useState('idle');
   const [error, setError] = useState(null);
-  const [loadingAuth, setLoadingAuth] = useState(false);
+  const [loadingAuth, setLoadingAuth] = useState(true);
 
   const isGithubConnected = Boolean(githubToken && githubUsername);
 
-  const saveUserRecord = async (uid, profile, firebaseUserObj) => {
+  const saveUserRecord = async (uid, profile, firebaseUserObj, extraPayload = {}) => {
     try {
       const userRef = doc(db, 'users', uid);
       const snapshot = await getDoc(userRef);
@@ -40,16 +40,18 @@ export const GithubProvider = ({ children }) => {
         email: profile?.email || firebaseUserObj?.email || '',
         photoURL: profile?.photoURL || firebaseUserObj?.photoURL || '',
         username: profile?.username || profile?.name || firebaseUserObj?.displayName || '',
-        githubUsername: githubUsername || '',
-        githubRepoName: repoName || 'github-drive',
+        githubUsername: extraPayload.githubUsername !== undefined ? extraPayload.githubUsername : (githubUsername || ''),
+        githubRepoName: extraPayload.repoName !== undefined ? extraPayload.repoName : (repoName || 'github-drive'),
+        githubToken: extraPayload.githubToken !== undefined ? extraPayload.githubToken : (githubToken || ''),
         updatedAt: serverTimestamp(),
       };
 
       if (snapshot.exists()) {
         await updateDoc(userRef, {
           ...payload,
-          githubUsername: snapshot.data()?.githubUsername || payload.githubUsername,
-          githubRepoName: snapshot.data()?.githubRepoName || payload.githubRepoName,
+          githubUsername: payload.githubUsername || snapshot.data()?.githubUsername,
+          githubRepoName: payload.githubRepoName || snapshot.data()?.githubRepoName,
+          githubToken: payload.githubToken || snapshot.data()?.githubToken,
         });
       } else {
         await setDoc(userRef, {
@@ -71,11 +73,12 @@ export const GithubProvider = ({ children }) => {
         const data = snapshot.data();
         if (data.githubRepoName) {
           setRepoName(data.githubRepoName);
-          localStorage.setItem('github_repo_name', data.githubRepoName);
         }
         if (data.githubUsername) {
           setGithubUsername(data.githubUsername);
-          localStorage.setItem('github_username', data.githubUsername);
+        }
+        if (data.githubToken) {
+          setGithubToken(data.githubToken);
         }
         setUser({
           name: data.name || firebaseUserObj?.displayName || '',
@@ -177,8 +180,7 @@ export const GithubProvider = ({ children }) => {
     setFirebaseUser(null);
     setRepoStatus('idle');
     setError(null);
-    localStorage.removeItem('gh_token');
-    localStorage.removeItem('github_username');
+    
   };
 
   const connectGithubAccount = () => {
@@ -197,15 +199,14 @@ export const GithubProvider = ({ children }) => {
   const switchGithubAccount = async () => {
     setGithubToken(null);
     setGithubUsername('');
-    localStorage.removeItem('github_username');
-    localStorage.removeItem('gh_token');
+    
     await connectGithubAccount();
   };
 
   const updateRepoName = async (newRepoName) => {
     const normalized = newRepoName?.trim() || 'github-drive';
     setRepoName(normalized);
-    localStorage.setItem('github_repo_name', normalized);
+    
     if (firebaseUser) {
       try {
         const userRef = doc(db, 'users', firebaseUser.uid);
@@ -238,10 +239,10 @@ export const GithubProvider = ({ children }) => {
       };
       setUser(profile);
       setGithubUsername(response.data.login);
-      localStorage.setItem('github_username', response.data.login);
+      
       const currentUid = firebaseUser?.uid || auth.currentUser?.uid;
       if (currentUid) {
-        await saveUserRecord(currentUid, profile, firebaseUser || auth.currentUser);
+        await saveUserRecord(currentUid, profile, firebaseUser || auth.currentUser, { githubUsername: response.data.login });
       }
       return response.data.login;
     } catch (err) {
@@ -263,11 +264,17 @@ export const GithubProvider = ({ children }) => {
       }, {
         headers: { Accept: 'application/json' },
       });
+      console.log("GitHub OAuth Response:", response.data);
 
       if (response.data.access_token) {
         const newToken = response.data.access_token;
         setGithubToken(newToken);
-        localStorage.setItem('gh_token', newToken);
+        
+        const currentUid = firebaseUser?.uid || auth.currentUser?.uid;
+        if (currentUid) {
+          const userRef = doc(db, 'users', currentUid);
+          await updateDoc(userRef, { githubToken: newToken, updatedAt: serverTimestamp() });
+        }
         const githubLogin = await fetchGithubUser(newToken);
         if (githubLogin) {
           await checkOrCreateRepo(newToken, githubLogin);
@@ -314,9 +321,14 @@ export const GithubProvider = ({ children }) => {
           });
           setRepoStatus('ready');
         } catch (creationError) {
-          console.error('Repo creation failed', creationError);
-          setRepoStatus('error');
-          setError('Could not create your GitHub storage repository.');
+          if (creationError.response && creationError.response.status === 422) {
+            // 422 usually means the repository already exists or the name is invalid
+            setRepoStatus('ready');
+          } else {
+            console.error('Repo creation failed', creationError);
+            setRepoStatus('error');
+            setError('Could not create your GitHub storage repository.');
+          }
         }
       } else {
         console.error('Repo check failed', err);
@@ -334,6 +346,7 @@ export const GithubProvider = ({ children }) => {
       } else {
         setUser(null);
       }
+      setLoadingAuth(false);
     });
 
     return () => unsubscribe();
