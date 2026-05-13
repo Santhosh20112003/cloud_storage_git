@@ -155,16 +155,29 @@ const Dashboard = () => {
           lastModified: i.lastModified || null
         }));
 
-        // Merge current branch into the master 'allFiles' list in Firestore
-        const mergedFiles = [...firestoreFiles];
+        // Reconcile Firestore files with GitHub: 
+        // 1. Filter out files in the current folder that are no longer on GitHub
+        const freshPaths = new Set(newFilesData.map(f => f.path));
+        let reconciledFiles = firestoreFiles.filter(f => {
+          const pathParts = f.path.split('/');
+          const parentPath = pathParts.slice(0, -1).join('/');
+          
+          // Only perform cleanup for matches in the current path we just fetched
+          if (parentPath === (currentPath || '')) {
+            return freshPaths.has(f.path);
+          }
+          return true; // Keep files in other directories
+        });
+
+        // 2. Add or update files from the fresh GitHub fetch
         newFilesData.forEach(newFile => {
-          const index = mergedFiles.findIndex(f => f.path === newFile.path);
-          if (index !== -1) mergedFiles[index] = newFile;
-          else mergedFiles.push(newFile);
+          const index = reconciledFiles.findIndex(f => f.path === newFile.path);
+          if (index !== -1) reconciledFiles[index] = newFile;
+          else reconciledFiles.push(newFile);
         });
 
         await updateDoc(doc(db, 'users', firebaseUser.uid), { 
-          allFiles: mergedFiles,
+          allFiles: reconciledFiles,
           lastSync: new Date().toISOString()
         });
       }
