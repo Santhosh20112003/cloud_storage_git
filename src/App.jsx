@@ -43,13 +43,14 @@ const App = () => {
           <Route path="/" element={<Landing />} />
           <Route path="/callback" element={<Callback />} />
           <Route 
-            path="/dashboard" 
+            path="/dashboard/*" 
             element={
               <ProtectedRoute>
                 <Dashboard />
               </ProtectedRoute>
             } 
           />
+          <Route path="/dashboard" element={<Navigate to="/dashboard/overview" replace />} />
         </Routes>
     </>
   );

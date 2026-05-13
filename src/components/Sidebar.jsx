@@ -1,19 +1,22 @@
 import React from 'react';
+import { NavLink } from 'react-router-dom';
 import { useGithub } from '../context/GithubContext';
 import { FaHdd, FaFolder, FaCog, FaTimes, FaCloud, FaSignOutAlt, FaPlus } from 'react-icons/fa';
+import { STORAGE_CONFIG } from '../config/commonUtils';
+import toast from 'react-hot-toast';
 
-const Sidebar = ({ activeView, setActiveView, usedStorage, totalStorage, percentage, isOpen, setIsOpen }) => {
+const Sidebar = ({ usedStorage, totalStorage, percentage, isOpen, setIsOpen }) => {
   const { user, logout, repositories, repoName, switchActiveRepo, updateRepoName } = useGithub();
   
   const navItems = [
-    { id: 'dashboard', icon: <FaHdd />, label: 'Dashboard' },
-    { id: 'mystorage', icon: <FaFolder />, label: 'All Files' },
-    { id: 'settings', icon: <FaCog />, label: 'Settings' },
+    { id: 'dashboard', icon: <FaHdd />, label: 'Dashboard', path: '/dashboard/overview' },
+    { id: 'mystorage', icon: <FaFolder />, label: 'All Files', path: '/dashboard/all-files' },
+    { id: 'settings', icon: <FaCog />, label: 'Settings', path: '/dashboard/settings' },
   ];
 
   const handleAddRepo = () => {
-    if (repositories.length >= 3) {
-      return toast.error('Account limit reached: Maximum 3 storage repositories allowed.');
+    if (repositories.length >= STORAGE_CONFIG.MAX_REPOSITORIES) {
+      return toast.error(`Account limit reached: Maximum ${STORAGE_CONFIG.MAX_REPOSITORIES} storage repositories allowed.`);
     }
     const nextRepoNum = repositories.length + 1;
     const newRepoName = `github-drive-${nextRepoNum}`;
@@ -45,28 +48,32 @@ const Sidebar = ({ activeView, setActiveView, usedStorage, totalStorage, percent
             <p className="text-[10px] font-bold text-[#586069] uppercase tracking-wider">Navigation</p>
           </div>
           {navItems.map((item) => {
-            const isActive = activeView === item.id;
             return (
-              <button
+              <NavLink
                 key={item.id}
-                onClick={() => { setActiveView(item.id); setIsOpen(false); }}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded text-sm transition-colors ${
+                to={item.path}
+                onClick={() => setIsOpen(false)}
+                className={({ isActive }) => `w-full flex items-center gap-3 px-3 py-2 rounded text-sm transition-colors ${
                   isActive 
                     ? 'bg-[#0366d6] text-white font-medium' 
                     : 'text-[#586069] hover:bg-[#f3f4f6] hover:text-[#24292e]'
                 }`}
               >
-                <span className={isActive ? 'text-white' : 'text-[#959da5]'}>
-                  {React.cloneElement(item.icon, { size: 16 })}
-                </span>
-                <span>{item.label}</span>
-              </button>
+                {({ isActive }) => (
+                  <>
+                    <span className={isActive ? 'text-white' : 'text-[#959da5]'}>
+                      {React.cloneElement(item.icon, { size: 16 })}
+                    </span>
+                    <span>{item.label}</span>
+                  </>
+                )}
+              </NavLink>
             );
           })}
 
           <div className="mt-6 px-3 mb-2 flex justify-between items-center">
             <p className="text-[10px] font-bold text-[#586069] uppercase tracking-wider">Storage Repos</p>
-            {repositories.length < 3 && (
+            {repositories.length < STORAGE_CONFIG.MAX_REPOSITORIES && (
               <button onClick={handleAddRepo} className="text-[#0366d6] hover:bg-blue-50 p-1 rounded-full transition-colors">
                 <FaPlus size={10} />
               </button>

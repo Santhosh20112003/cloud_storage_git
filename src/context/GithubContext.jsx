@@ -11,6 +11,7 @@ import {
   onAuthStateChanged,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp, deleteField } from 'firebase/firestore';
+import { STORAGE_CONFIG } from '../config/commonUtils';
 
 const GithubContext = createContext();
 
@@ -52,12 +53,12 @@ export const GithubProvider = ({ children }) => {
           ...payload,
           githubUsername: payload.githubUsername || data?.githubUsername,
           githubToken: payload.githubToken || data?.githubToken,
-          repositories: data?.repositories || [{ name: repoName, isActive: true }]
+          repositories: data?.repositories || [{ name: repoName, isActive: true, files: [] }]
         });
       } else {
         await setDoc(userRef, {
           ...payload,
-          repositories: [{ name: repoName, isActive: true }],
+          repositories: [{ name: repoName, isActive: true, files: [] }],
           createdAt: serverTimestamp(),
         });
       }
@@ -221,8 +222,9 @@ export const GithubProvider = ({ children }) => {
   const updateRepoName = async (newRepoName) => {
     const normalized = newRepoName?.trim() || 'github-drive';
     if (repositories.some(r => r.name === normalized)) return; // Already exists
+    if (repositories.length >= STORAGE_CONFIG.MAX_REPOSITORIES) return; // Limit reached
 
-    const newRepos = [...repositories.map(r => ({ ...r, isActive: false })), { name: normalized, isActive: true }];
+    const newRepos = [...repositories.map(r => ({ ...r, isActive: false })), { name: normalized, isActive: true, files: [] }];
     setRepositories(newRepos);
     setRepoName(normalized);
     
@@ -259,7 +261,40 @@ export const GithubProvider = ({ children }) => {
       }
     }
   };
+  const deleteRepo = async (nameToDelete) => {
+    const isConfirmed = window.confirm(`Are you sure you want to remove the reference to '${nameToDelete}' from the app? This will NOT delete the actual repository from GitHub.`);
+    
+    if (!isConfirmed) return;
 
+    try {
+      setRepoStatus('saving');
+      
+      // Remove from local state only (Do NOT call GitHub DELETE API)
+      const updatedRepos = repositories.filter(r => r.name !== nameToDelete);
+      
+      if (repoName === nameToDelete && updatedRepos.length > 0) {
+        updatedRepos[0].isActive = true;
+        setRepoName(updatedRepos[0].name);
+      }
+
+      setRepositories(updatedRepos);
+
+      // Update Firestore
+      if (firebaseUser) {
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        await updateDoc(userRef, {
+          repositories: updatedRepos,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      
+      setRepoStatus('idle');
+    } catch (err) {
+      console.error('Failed to remove repo reference', err);
+      setError('Failed to remove repository reference.');
+      setRepoStatus('error');
+    }
+  };
   const fetchGithubUser = async (tokenToUse) => {
     try {
       const response = await axios.get('https://api.github.com/user', {
@@ -331,10 +366,11 @@ export const GithubProvider = ({ children }) => {
   };
 
   const checkOrCreateRepo = async (authToken, username) => {
-    if (!authToken || !username) return;
+    if (!authToken || !username || !repoName) return;
 
     setRepoStatus('checking');
     try {
+      // Create with authToken and handle different repo name
       await axios.get(`https://api.github.com/repos/${username}/${repoName}`, {
         headers: { 
           Authorization: `Bearer ${authToken}`,
@@ -346,10 +382,12 @@ export const GithubProvider = ({ children }) => {
     } catch (err) {
       if (err.response && err.response.status === 404) {
         // CASE 1: Repo missing from GitHub but IS in our local repositories list
-        // This means it was manually deleted on GitHub.com
+        // This means it was manually deleted on GitHub.com OR IT'S A NEW DRIVE that needs creating.
         const isKnownRepo = repositories.some(r => r.name === repoName);
         
-        if (isKnownRepo && repoName !== 'github-drive') {
+        // If it's github-drive-X and it's missing, let's create it.
+        // If it's a repo name we don't recognize and it's missing, maybe we remove it.
+        if (isKnownRepo && !repoName.startsWith('github-drive')) {
           console.warn(`Repository ${repoName} not found on GitHub. Removing from list.`);
           const updatedRepos = repositories.filter(r => r.name !== repoName);
           
@@ -358,7 +396,7 @@ export const GithubProvider = ({ children }) => {
             setRepoName(updatedRepos[0].name);
           } else {
             setRepoName('github-drive');
-            updatedRepos.push({ name: 'github-drive', isActive: true });
+            updatedRepos.push({ name: 'github-drive', isActive: true, files: [] });
           }
           
           setRepositories(updatedRepos);
@@ -366,7 +404,6 @@ export const GithubProvider = ({ children }) => {
             const userRef = doc(db, 'users', firebaseUser.uid);
             await updateDoc(userRef, { 
               repositories: updatedRepos,
-              [`files_${repoName.replace(/\./g, '_')}`]: deleteField()
             });
           }
           setRepoStatus('idle');
@@ -446,6 +483,7 @@ export const GithubProvider = ({ children }) => {
       handleCallback,
       updateRepoName,
       switchActiveRepo,
+      deleteRepo,
       repositories,
     }}>
       {children}

@@ -1,4 +1,5 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useGithub } from '../context/GithubContext';
 import { doc, updateDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
@@ -35,6 +36,10 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import FilePreview from './FilePreview';
 import toast from 'react-hot-toast';
+import Overview from './dashboard/Overview';
+import AllFiles from './dashboard/AllFiles';
+import Settings from './dashboard/Settings';
+import { STORAGE_CONFIG, formatBytes } from '../config/commonUtils';
 
 const getFileIcon = (fileName, type) => {
   if (type === 'dir') return <FaFolder className="text-[#0366d6]" />;
@@ -86,6 +91,7 @@ const Dashboard = () => {
     logout,
     switchActiveRepo,
     updateRepoName,
+    deleteRepo,
   } = useGithub();
 
   const [selectedFiles, setSelectedFiles] = React.useState([]);
@@ -98,7 +104,25 @@ const Dashboard = () => {
   const [currentPath, setCurrentPath] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [activeView, setActiveView] = React.useState('dashboard');
+  
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  // Map current path segments to internal view state
+  const activeView = React.useMemo(() => {
+    const path = location.pathname;
+    if (path.includes('/dashboard/overview')) return 'dashboard';
+    if (path.includes('/dashboard/all-files')) return 'mystorage';
+    if (path.includes('/dashboard/settings')) return 'settings';
+    return 'dashboard';
+  }, [location.pathname]);
+
+  // Handler for setting active view via route
+  const setActiveView = (view) => {
+    const route = view === 'dashboard' ? 'overview' : view === 'mystorage' ? 'all-files' : 'settings';
+    navigate(`/dashboard/${route}`);
+  };
+
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [refreshKey, setRefreshKey] = React.useState(0);
   const [firestoreFiles, setFirestoreFiles] = React.useState([]);
@@ -181,11 +205,23 @@ const Dashboard = () => {
           else reconciledFiles.push(newFile);
         });
 
-        // Store files under a repository-specific key in Firestore
-        await updateDoc(doc(db, 'users', firebaseUser.uid), { 
-          [`files_${repository.replace(/\./g, '_')}`]: reconciledFiles,
-          lastSync: new Date().toISOString()
-        });
+        // Store files inside the specific repository object within the repositories array
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        const userDoc = await getDoc(userRef);
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const updatedRepos = (userData.repositories || []).map(r => {
+            if (r.name === repository) {
+              return { ...r, files: reconciledFiles };
+            }
+            return r;
+          });
+
+          await updateDoc(userRef, { 
+            repositories: updatedRepos,
+            lastSync: new Date().toISOString()
+          });
+        }
       }
     } catch (err) {
       if (err.response?.status === 404) {
@@ -208,8 +244,8 @@ const Dashboard = () => {
     const unsub = onSnapshot(doc(db, 'users', firebaseUser.uid), (doc) => {
       if (doc.exists()) {
         const data = doc.data();
-        const repoKey = `files_${repository.replace(/\./g, '_')}`;
-        setFirestoreFiles(data[repoKey] || []);
+        const activeRepo = (data.repositories || []).find(r => r.name === repository);
+        setFirestoreFiles(activeRepo?.files || []);
       }
     });
     return () => unsub();
@@ -272,24 +308,27 @@ const Dashboard = () => {
   };
 
   const processFiles = (files) => {
-    const MAX_FILE_SIZE_MB = 100; // Easily configurable limit
-    const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024; 
-    const BANNED_EXTENSIONS = ['exe', 'bat', 'sh', 'msi'];
+    if (files.length > STORAGE_CONFIG.MAX_BATCH_UPLOAD_COUNT) {
+      toast.error(`Maximum ${STORAGE_CONFIG.MAX_BATCH_UPLOAD_COUNT} files can be uploaded at once.`);
+      return;
+    }
+
+    const MAX_FILE_SIZE = STORAGE_CONFIG.MAX_FILE_SIZE_MB * 1024 * 1024; 
 
     const validatedFiles = files.filter(file => {
       const ext = file.name.split('.').pop().toLowerCase();
       
       if (file.size > MAX_FILE_SIZE) {
-        toast.error(`${file.name} exceeds the ${MAX_FILE_SIZE_MB}MB limit.`);
+        toast.error(`${file.name} exceeds the ${STORAGE_CONFIG.MAX_FILE_SIZE_MB}MB limit.`);
         return false;
       }
       
-      if (BANNED_EXTENSIONS.includes(ext)) {
+      if (STORAGE_CONFIG.BANNED_EXTENSIONS.includes(ext)) {
         toast.error(`${ext.toUpperCase()} files are restricted for security.`);
         return false;
       }
 
-      if (file.name.length > 100) {
+      if (file.name.length > STORAGE_CONFIG.MAX_FILENAME_LENGTH) {
         toast.error(`Filename "${file.name}" is too long.`);
         return false;
       }
@@ -322,9 +361,22 @@ const Dashboard = () => {
         const content = event.target.result.split(',')[1];
         try {
           const uploadPath = currentPath ? `${currentPath}/${item.name}` : item.name;
+          
+          // Check if file exists to get its SHA for update (prevents 409 conflict)
+          let existingSha = null;
+          try {
+            const checkFile = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${uploadPath}`, {
+              headers: { Authorization: `Bearer ${githubToken}` }
+            });
+            existingSha = checkFile.data.sha;
+          } catch (e) {
+            // File doesn't exist, which is fine
+          }
+
           await axios.put(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${uploadPath}`, {
             message: `Upload ${item.name}`,
-            content
+            content,
+            ...(existingSha && { sha: existingSha })
           }, {
             headers: { Authorization: `Bearer ${githubToken}` }
           });
@@ -334,16 +386,27 @@ const Dashboard = () => {
             const userRef = doc(db, 'users', firebaseUser.uid);
             const userSnap = await getDoc(userRef);
             if (userSnap.exists()) {
-              const currentFiles = userSnap.data().allFiles || [];
+              const userData = userSnap.data();
+              const repositories = userData.repositories || [];
+              const targetRepo = repositories.find(r => r.name === repository);
+              const currentFiles = targetRepo?.files || [];
+              
               const newFileMeta = {
+                name: item.name,
                 path: uploadPath,
                 type: 'file',
                 lastModified: new Date().toISOString(),
                 size: item.file.size
               };
+              
               // Filter out if file already exists in metadata to avoid duplicates
               const updatedFiles = [...currentFiles.filter(f => f.path !== uploadPath), newFileMeta];
-              await updateDoc(userRef, { allFiles: updatedFiles });
+              
+              const updatedRepos = repositories.map(r => 
+                r.name === repository ? { ...r, files: updatedFiles } : r
+              );
+              
+              await updateDoc(userRef, { repositories: updatedRepos });
             }
           }
           
@@ -427,7 +490,16 @@ const Dashboard = () => {
       if (firebaseUser) {
         const deletedPaths = allFilesToDelete.map(f => f.path);
         const updatedFiles = firestoreFiles.filter(f => !deletedPaths.includes(f.path));
-        await updateDoc(doc(db, 'users', firebaseUser.uid), { allFiles: updatedFiles });
+        
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        const userDoc = await getDoc(userRef);
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const updatedRepos = (userData.repositories || []).map(r => 
+            r.name === repository ? { ...r, files: updatedFiles } : r
+          );
+          await updateDoc(userRef, { repositories: updatedRepos });
+        }
       }
 
       toast.success('Successfully deleted all items', { id: toastId });
@@ -533,7 +605,7 @@ const Dashboard = () => {
     }
   };
 
-  const totalLimitBytes = 1024 * 1024 * 1024;
+  const totalLimitBytes = STORAGE_CONFIG.TOTAL_CAPACITY_GB * 1024 * 1024 * 1024;
   const totalSizeBytes = firestoreFiles.reduce((acc, item) => acc + (item.size || 0), 0);
   const percentage = (totalSizeBytes / totalLimitBytes) * 100;
 
@@ -559,7 +631,9 @@ const Dashboard = () => {
 
     // Sorting
     result.sort((a, b) => {
-      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      const nameA = a?.name || '';
+      const nameB = b?.name || '';
+      if (sortBy === 'name') return nameA.localeCompare(nameB);
       if (sortBy === 'date') return new Date(b.lastModified || 0) - new Date(a.lastModified || 0);
       if (sortBy === 'size') return (b.size || 0) - (a.size || 0);
       return 0;
@@ -567,7 +641,7 @@ const Dashboard = () => {
 
     return result.map(i => ({
       ...i,
-      displaySize: i.type === 'dir' ? '--' : (i.size / 1024 < 1024 ? `${(i.size / 1024).toFixed(1)} KB` : `${(i.size / (1024 * 1024)).toFixed(1)} MB`)
+      displaySize: i.type === 'dir' ? '--' : formatBytes(i.size)
     }));
   }, [displayItems, searchQuery, filterType, sortBy]);
 
@@ -591,8 +665,8 @@ const Dashboard = () => {
       <Sidebar 
         activeView={activeView} 
         setActiveView={setActiveView} 
-        usedStorage={(totalSizeBytes/(1024*1024)).toFixed(1) + ' MB'}
-        totalStorage="1 GB"
+        usedStorage={formatBytes(totalSizeBytes)}
+        totalStorage={`${STORAGE_CONFIG.TOTAL_CAPACITY_GB} GB`}
         percentage={percentage}
         isOpen={sidebarOpen}
         setIsOpen={setSidebarOpen}
@@ -619,326 +693,66 @@ const Dashboard = () => {
           ) : (
             <div className="w-full max-w-6xl mx-auto">
               {activeView === 'dashboard' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-8">
-                  <div className="bg-white border border-[#e1e4e8] rounded-xl p-6 shadow-sm hover:shadow-md transition-all group cursor-default">
-                    <div className="flex items-center gap-3 mb-4 text-[#586069]">
-                      <FaHdd size={18} className="group-hover:text-[#24292e] transition-colors" />
-                      <span className="text-xs font-bold uppercase tracking-wider">Total Storage</span>
-                    </div>
-                    <div className="text-2xl font-bold">1.0 GB</div>
-                    <p className="text-xs text-[#586069] mt-1">Enterprise Plan</p>
-                  </div>
-                  <div className="bg-white border border-[#e1e4e8] rounded-xl p-6 shadow-sm hover:shadow-md transition-all group cursor-default">
-                    <div className="flex items-center gap-3 mb-4 text-[#0366d6]">
-                      <FaLayerGroup size={18} className="group-hover:scale-110 transition-transform" />
-                      <span className="text-xs font-bold uppercase tracking-wider">Used Space</span>
-                    </div>
-                    <div className="text-2xl font-bold">{(totalSizeBytes/(1024*1024)).toFixed(1)} MB</div>
-                    <div className="mt-4 w-full bg-[#e1e4e8] h-1.5 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-[#0366d6] transition-all duration-1000 ease-out"
-                        style={{ width: `${percentage}%` }}
-                      ></div>
-                    </div>
-                    <p className="text-xs text-[#586069] mt-2">{percentage.toFixed(2)}% Capacity</p>
-                  </div>
-                  <div className="bg-white border border-[#e1e4e8] rounded-xl p-6 shadow-sm hover:shadow-md transition-all group cursor-default">
-                    <div className="flex items-center gap-3 mb-4 text-[#2ea44f]">
-                      <FaCheck size={18} className="group-hover:rotate-12 transition-transform" />
-                      <span className="text-xs font-bold uppercase tracking-wider">Status</span>
-                    </div>
-                    <div className="text-2xl font-bold">Optimal</div>
-                    <p className="text-xs text-[#586069] mt-1">All systems functional</p>
-                  </div>
-                </div>
+                <>
+                  <Overview totalSizeBytes={totalSizeBytes} percentage={percentage} />
+                  <AllFiles 
+                    currentPath={currentPath}
+                    setCurrentPath={setCurrentPath}
+                    selectedFiles={selectedFiles}
+                    setSelectedFiles={setSelectedFiles}
+                    handleDelete={handleDelete}
+                    handleCreateFolder={handleCreateFolder}
+                    fileInputRef={fileInputRef}
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                    filterType={filterType}
+                    setFilterType={setFilterType}
+                    sortBy={sortBy}
+                    setSortBy={setSortBy}
+                    loading={loading}
+                    filteredItems={filteredItems}
+                    handleDoubleClick={handleDoubleClick}
+                    getFileIcon={getFileIcon}
+                    setDetailsFile={setDetailsFile}
+                    activeView={activeView}
+                  />
+                </>
               )}
 
-              {(activeView === 'mystorage' || activeView === 'dashboard') && (
-                <div className="bg-white border border-[#e1e4e8] rounded shadow-sm overflow-visible">
-                  <div className="px-2 sm:px-4 md:px-6 py-4 flex flex-col gap-4 border-b border-[#e1e4e8] bg-[#fafbfc] rounded-t">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
-                      <div className="flex items-center gap-3">
-                        {currentPath && (
-                          <button onClick={() => {
-                            const parts = currentPath.split('/'); parts.pop(); setCurrentPath(parts.join('/'));
-                          }} className="p-1.5 text-[#586069] hover:bg-[#f3f4f6] rounded transition-colors"><FaArrowLeft size={12} /></button>
-                        )}
-                        <span className="text-sm font-semibold">{activeView === 'dashboard' ? 'Recent Files' : `/ ${currentPath || 'Root'}`}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        {selectedFiles.length > 0 && (
-                          <button onClick={handleDelete} className="px-3 py-1.5 bg-white border border-[#d73a49] text-[#d73a49] text-xs font-semibold rounded hover:bg-[#feeef0] flex items-center gap-2 transition-colors"><FaTrash /> Delete</button>
-                        )}
-                        <>
-                          <button onClick={handleCreateFolder} className="px-3 py-1.5 bg-white border border-[#e1e4e8] text-[#24292e] text-xs font-semibold rounded hover:bg-[#f3f4f6] flex items-center gap-2 transition-colors"><FaFolderPlus /> New Folder</button>
-                          <button onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 bg-[#2ea44f] text-white text-xs font-semibold rounded border border-[#2c974b] hover:bg-[#2c974b] flex items-center gap-2 transition-colors"><FaUpload /> Upload</button>
-                        </>
-                      </div>
-                    </div>
-                    
-                    {/* Search and Filters Bar */}
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-2">
-                      <div className="relative flex-1 min-w-[200px]">
-                        <input 
-                          type="text"
-                          placeholder="Search files..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full pl-9 pr-3 py-1.5 bg-white border border-[#e1e4e8] rounded-lg text-sm focus:ring-2 focus:ring-[#0366d6]/20 focus:border-[#0366d6] outline-none transition-all"
-                        />
-                        <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[#959da5]" size={14} />
-                      </div>
-                      
-                      <select 
-                        value={filterType}
-                        onChange={(e) => setFilterType(e.target.value)}
-                        className="px-3 py-1.5 bg-white border border-[#e1e4e8] rounded-lg text-xs font-medium text-[#586069] outline-none hover:border-[#0366d6] transition-colors cursor-pointer"
-                      >
-                        <option value="all">All Types</option>
-                        <option value="image">Images</option>
-                        <option value="video">Videos</option>
-                        <option value="pdf">PDFs</option>
-                        <option value="doc">Documents</option>
-                      </select>
-
-                      <select 
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value)}
-                        className="px-3 py-1.5 bg-white border border-[#e1e4e8] rounded-lg text-xs font-medium text-[#586069] outline-none hover:border-[#0366d6] transition-colors cursor-pointer"
-                      >
-                        <option value="name">Sort by Name</option>
-                        <option value="date">Sort by Recent</option>
-                        <option value="size">Sort by Size</option>
-                      </select>
-                    </div>
-                  </div>
-
-                    <div className="overflow-x-auto w-full">
-                      <table className="min-w-[500px] w-full text-left text-sm border-separate border-spacing-0">
-                        <thead>
-                          <tr className="bg-[#fafbfc] border-b border-[#e1e4e8] text-[#586069]">
-                            <th className="px-6 py-3 font-semibold text-xs w-10">
-                              <input 
-                                type="checkbox" 
-                                className="rounded border-[#e1e4e8]" 
-                                onChange={(e) => setSelectedFiles(e.target.checked ? filteredItems.map(i => i.path) : [])} 
-                                checked={filteredItems.length > 0 && selectedFiles.length === filteredItems.length} 
-                              />
-                            </th>
-                            <th className="px-6 py-3 font-semibold text-xs">Name</th>
-                            <th className="px-6 py-3 font-semibold text-xs text-right">Size</th>
-                            <th className="px-6 py-3 font-semibold text-xs text-right w-16">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#e1e4e8]">
-                          {loading && filteredItems.length === 0 ? (
-                            <tr><td colSpan="4" className="px-6 py-8 text-center text-[#586069]"><FaSpinner className="animate-spin inline mr-2" /> Initializing storage...</td></tr>
-                          ) : filteredItems.length === 0 ? (
-                            <tr><td colSpan="4" className="px-6 py-12 text-center text-[#586069]">
-                              <div className="flex flex-col items-center gap-2 animate-in fade-in zoom-in duration-300">
-                                <FaFolder size={32} className="text-[#e1e4e8]" />
-                                <p>No files found in this directory.</p>
-                              </div>
-                            </td></tr>
-                          ) : (
-                            filteredItems.map((item, idx) => (
-                              <tr 
-                                key={idx} 
-                                onDoubleClick={() => handleDoubleClick(item)} 
-                                className={`hover:bg-[#f6f8fbb0] group cursor-pointer transition-colors duration-150 ${selectedFiles.includes(item.path) ? 'bg-[#f1f8ff]' : ''}`}
-                              >
-                                <td className="px-4 sm:px-6 py-3">
-                                  <input 
-                                    type="checkbox" 
-                                    className="rounded border-[#e1e4e8] transition-all group-hover:border-[#0366d6]" 
-                                    checked={selectedFiles.includes(item.path)} 
-                                    onChange={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedFiles(prev => prev.includes(item.path) ? prev.filter(p => p !== item.path) : [...prev, item.path]);
-                                    }} 
-                                  />
-                                </td>
-                                <td className="px-4 sm:px-6 py-3 min-w-0 max-w-xs">
-                                  <div className="flex items-center gap-3 transition-transform duration-200 group-hover:translate-x-1 min-w-0">
-                                    {getFileIcon(item.name, item.type)}
-                                    <span className={item.type === 'dir' ? 'text-[#0366d6] font-medium hover:underline break-all' : 'text-[#24292e] break-all truncate max-w-[120px] sm:max-w-[200px] md:max-w-[300px]'} title={item.name}>{item.name}</span>
-                                  </div>
-                                </td>
-                                <td className="px-4 sm:px-6 py-3 text-right text-[#586069] text-xs font-medium whitespace-nowrap">
-                                  {item.displaySize}
-                                </td>
-                                <td className="px-4 sm:px-6 py-3 text-right relative overflow-visible">
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === idx ? null : idx); }}
-                                    className="p-2 hover:bg-[#e1e4e8] rounded-full text-[#586069] transition-colors"
-                                  >
-                                    <FaEllipsisV size={14} />
-                                  </button>
-                                  
-                                  {activeMenu === idx && (
-                                    <>
-                                      {/* Overlay for closing (desktop and mobile) */}
-                                      {/* Desktop overlay */}
-                                      <div className="hidden sm:block fixed inset-0 z-[100] bg-black/10" onClick={() => setActiveMenu(null)}></div>
-                                      {/* Mobile overlay with fade-in */}
-                                      <div className="sm:hidden fixed inset-0 z-[199] bg-black/40 transition-opacity duration-300 opacity-100" onClick={() => setActiveMenu(null)}></div>
-                                      {/* Desktop/Tablet Dropdown */}
-                                      <div className="hidden sm:block absolute right-6 top-0 w-48 bg-white border border-[#e1e4e8] rounded shadow-xl z-[101] overflow-hidden py-1 translate-x-0">
-                                        <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDoubleClick(item); }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
-                                          <FaEye className="text-[#586069] w-4" /> Preview / Open
-                                        </button>
-                                        <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); setDetailsFile(item); }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
-                                          <FaLayerGroup className="text-[#586069] w-4" /> Properties
-                                        </button>
-                                        <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDownload(item); }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
-                                          <FaDownload className="text-[#586069] w-4" /> Download
-                                        </button>
-                                        <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleRename(item); }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
-                                          <FaEdit className="text-[#586069] w-4" /> Rename
-                                        </button>
-                                        <div className="h-[1px] bg-[#e1e4e8] my-1"></div>
-                                        <button onClick={(e) => { 
-                                          e.stopPropagation(); 
-                                          setActiveMenu(null); 
-                                          const deleteItem = async () => {
-                                            if (!window.confirm(`Delete "${item.name}"?`)) return;
-                                            const toastId = toast.loading(`Deleting ${item.name}...`);
-                                            try {
-                                              const leaves = await fetchAllLeaves(item);
-                                              for (const file of leaves) {
-                                                await axios.delete(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
-                                                  headers: { Authorization: `Bearer ${githubToken}` },
-                                                  data: { message: `Delete ${file.path}`, sha: file.sha }
-                                                });
-                                              }
-                                              const deletedPaths = leaves.map(f => f.path);
-                                              const updatedFiles = firestoreFiles.filter(f => !deletedPaths.includes(f.path));
-                                              await updateDoc(doc(db, 'users', firebaseUser.uid), { allFiles: updatedFiles });
-                                              toast.success('Deleted successfully', { id: toastId });
-                                              setTimeout(triggerRefresh, 1500);
-                                            } catch (err) {
-                                              toast.error('Deletion failed', { id: toastId });
-                                            }
-                                          };
-                                          deleteItem();
-                                        }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#feeef0] text-[#d73a49] flex items-center gap-3 transition-colors font-semibold">
-                                          <FaTrash className="w-4" /> Delete
-                                        </button>
-                                      </div>
-                                      {/* Mobile Bottom Sheet */}
-                                      <div className="sm:hidden fixed inset-x-0 bottom-0 z-[200] bg-white border-t border-[#e1e4e8] rounded-t-2xl shadow-2xl overflow-hidden transition-transform duration-300 ease-out transform translate-y-0" style={{transform: 'translateY(0)'}}>
-                                        <div className="flex flex-col py-2">
-                                          <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDoubleClick(item); }} className="w-full px-6 py-4 text-left text-base hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
-                                            <FaEye className="text-[#586069] w-5" /> Preview / Open
-                                          </button>
-                                          <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); setDetailsFile(item); }} className="w-full px-6 py-4 text-left text-base hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
-                                            <FaLayerGroup className="text-[#586069] w-5" /> Properties
-                                          </button>
-                                          <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDownload(item); }} className="w-full px-6 py-4 text-left text-base hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
-                                            <FaDownload className="text-[#586069] w-5" /> Download
-                                          </button>
-                                          <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleRename(item); }} className="w-full px-6 py-4 text-left text-base hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
-                                            <FaEdit className="text-[#586069] w-5" /> Rename
-                                          </button>
-                                          <div className="h-[1px] bg-[#e1e4e8] my-1"></div>
-                                          <button onClick={(e) => { 
-                                            e.stopPropagation(); 
-                                            setActiveMenu(null); 
-                                            const deleteItem = async () => {
-                                              if (!window.confirm(`Delete "${item.name}"?`)) return;
-                                              const toastId = toast.loading(`Deleting ${item.name}...`);
-                                              try {
-                                                const leaves = await fetchAllLeaves(item);
-                                                for (const file of leaves) {
-                                                  await axios.delete(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
-                                                    headers: { Authorization: `Bearer ${githubToken}` },
-                                                    data: { message: `Delete ${file.path}`, sha: file.sha }
-                                                  });
-                                                }
-                                                const deletedPaths = leaves.map(f => f.path);
-                                                const updatedFiles = firestoreFiles.filter(f => !deletedPaths.includes(f.path));
-                                                await updateDoc(doc(db, 'users', firebaseUser.uid), { allFiles: updatedFiles });
-                                                toast.success('Deleted successfully', { id: toastId });
-                                                setTimeout(triggerRefresh, 1500);
-                                              } catch (err) {
-                                                toast.error('Deletion failed', { id: toastId });
-                                              }
-                                            };
-                                            deleteItem();
-                                          }} className="w-full px-6 py-4 text-left text-base hover:bg-[#feeef0] text-[#d73a49] flex items-center gap-3 transition-colors font-semibold">
-                                            <FaTrash className="w-5" /> Delete
-                                          </button>
-                                        </div>
-                                        <button onClick={() => setActiveMenu(null)} className="w-full py-3 text-[#586069] text-base font-semibold border-t border-[#e1e4e8] bg-[#fafbfc]">Cancel</button>
-                                      </div>
-                                      {/* No extra style needed, handled by Tailwind transition */}
-                                    </>
-                                  )}
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                  </div>
-                </div>
+              {activeView === 'mystorage' && (
+                <AllFiles 
+                  currentPath={currentPath}
+                  setCurrentPath={setCurrentPath}
+                  selectedFiles={selectedFiles}
+                  setSelectedFiles={setSelectedFiles}
+                  handleDelete={handleDelete}
+                  handleCreateFolder={handleCreateFolder}
+                  fileInputRef={fileInputRef}
+                  searchQuery={searchQuery}
+                  setSearchQuery={setSearchQuery}
+                  filterType={filterType}
+                  setFilterType={setFilterType}
+                  sortBy={sortBy}
+                  setSortBy={setSortBy}
+                  loading={loading}
+                  filteredItems={filteredItems}
+                  handleDoubleClick={handleDoubleClick}
+                  getFileIcon={getFileIcon}
+                  setDetailsFile={setDetailsFile}
+                  activeView={activeView}
+                />
               )}
 
               {activeView === 'settings' && (
-                <div className="bg-white border border-[#e1e4e8] rounded p-8 shadow-sm">
-                  <h3 className="text-lg font-bold mb-6 border-b pb-4">Storage Management</h3>
-                  <div className="space-y-6">
-                    <div>
-                      <label className="block text-xs font-bold text-[#586069] uppercase mb-4">Your Cloud Drives</label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {repositories.map((repo) => (
-                          <div 
-                            key={repo.name}
-                            onClick={() => switchActiveRepo(repo.name)}
-                            className={`p-4 border rounded-xl cursor-pointer transition-all ${
-                              repoName === repo.name 
-                                ? 'border-[#0366d6] bg-[#f1f8ff] ring-2 ring-[#0366d6]/20' 
-                                : 'border-[#e1e4e8] bg-white hover:border-[#0366d6] hover:shadow-md'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <FaHdd className={repoName === repo.name ? 'text-[#0366d6]' : 'text-[#959da5]'} />
-                              {repoName === repo.name && <span className="text-[10px] bg-[#0366d6] text-white px-2 py-0.5 rounded-full font-bold">ACTIVE</span>}
-                            </div>
-                            <p className="font-bold text-sm truncate">{repo.name}</p>
-                            <p className="text-[10px] text-[#586069] mt-1 italic">1.0 GB Capacity</p>
-                          </div>
-                        ))}
-                        {repositories.length < 3 ? (
-                          <div 
-                            onClick={() => {
-                              const nextRepoNum = repositories.length + 1;
-                              const nextName = `github-drive-${nextRepoNum}`;
-                              updateRepoName(nextName);
-                            }}
-                            className="p-4 border border-dashed border-[#e1e4e8] rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-[#f6f8fa] hover:border-[#0366d6] text-[#586069] cursor-pointer group"
-                          >
-                            <FaPlus className="group-hover:scale-110 transition-transform" />
-                            <span className="text-xs font-bold">Add New Drive</span>
-                          </div>
-                        ) : (
-                          <div className="p-4 border border-dashed border-[#e1e4e8] rounded-xl flex flex-col items-center justify-center gap-2 bg-[#f8f9fa] opacity-60 cursor-not-allowed">
-                            <span className="text-[10px] font-bold text-[#d73a49]">LIMIT REACHED</span>
-                            <span className="text-xs font-bold text-[#586069]">Maximum 3 Drives</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="pt-8 border-t">
-                       <label className="block text-xs font-bold text-[#586069] uppercase mb-2">Current Connection</label>
-                       <p className="text-xs text-[#586069] mb-4">You are currently storing data in <span className="font-bold text-[#24292e]">{githubUsername}/{repoName}</span></p>
-                       <button onClick={logout} className="px-4 py-2 bg-white border border-[#d73a49] text-[#d73a49] text-sm font-semibold rounded hover:bg-[#feeef0] transition-colors">
-                        Sign Out of Session
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <Settings 
+                  repositories={repositories}
+                  repoName={repoName}
+                  switchActiveRepo={switchActiveRepo}
+                  updateRepoName={updateRepoName}
+                  deleteRepo={deleteRepo}
+                  githubUsername={githubUsername}
+                  logout={logout}
+                />
               )}
             </div>
           )}
@@ -1077,11 +891,53 @@ const Dashboard = () => {
 
                 <div className="pt-4 space-y-3">
                   <button 
-                    onClick={() => { window.open(detailsFile.download_url || '#', '_blank'); }}
+                    onClick={() => { handleDownload(detailsFile); }}
                     disabled={detailsFile.type === 'dir'}
                     className="w-full py-2.5 bg-[#2ea44f] text-white text-sm font-semibold rounded-lg hover:bg-[#2c974b] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     <FaDownload size={14} /> Download File
+                  </button>
+                  <button 
+                    onClick={() => { handleRename(detailsFile); setDetailsFile(null); }}
+                    className="w-full py-2.5 bg-white border border-[#e1e4e8] text-[#24292e] text-sm font-semibold rounded-lg hover:bg-[#f6f8fa] transition-all flex items-center justify-center gap-2"
+                  >
+                    <FaEdit size={14} /> Rename Item
+                  </button>
+                  <button 
+                    onClick={async () => { 
+                      if (!window.confirm(`Delete "${detailsFile.name}"?`)) return;
+                      const toastId = toast.loading(`Deleting ${detailsFile.name}...`);
+                      try {
+                        const leaves = await fetchAllLeaves(detailsFile);
+                        for (const file of leaves) {
+                          await axios.delete(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
+                            headers: { Authorization: `Bearer ${githubToken}` },
+                            data: { message: `Delete ${file.path}`, sha: file.sha }
+                          });
+                        }
+                        const deletedPaths = leaves.map(f => f.path);
+                        const updatedFiles = firestoreFiles.filter(f => !deletedPaths.includes(f.path));
+                        
+                        const userRef = doc(db, 'users', firebaseUser.uid);
+                        const userDoc = await getDoc(userRef);
+                        if (userDoc.exists()) {
+                          const userData = userDoc.data();
+                          const updatedRepos = (userData.repositories || []).map(r => 
+                            r.name === repository ? { ...r, files: updatedFiles } : r
+                          );
+                          await updateDoc(userRef, { repositories: updatedRepos });
+                        }
+
+                        toast.success('Deleted successfully', { id: toastId });
+                        setDetailsFile(null);
+                        setTimeout(triggerRefresh, 1500);
+                      } catch (err) {
+                        toast.error('Deletion failed', { id: toastId });
+                      }
+                    }}
+                    className="w-full py-2.5 bg-white border border-[#d73a49] text-[#d73a49] text-sm font-semibold rounded-lg hover:bg-[#feeef0] transition-all flex items-center justify-center gap-2"
+                  >
+                    <FaTrash size={14} /> Delete Permanently
                   </button>
                 </div>
               </div>
