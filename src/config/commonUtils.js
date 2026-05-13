@@ -1,8 +1,8 @@
 // Common utility constants and configuration
 export const STORAGE_CONFIG = {
-  MAX_FILE_SIZE_MB: 100,
+  MAX_FILE_SIZE_MB: 100, // Upgraded to 100 MB via Git Blob API
   MAX_BATCH_UPLOAD_COUNT: 5,
-  BANNED_EXTENSIONS: ['exe', 'bat', 'sh', 'msi'],
+  BANNED_EXTENSIONS: [],
   MAX_FILENAME_LENGTH: 100,
   // Single capacity applied to all repositories
   TOTAL_CAPACITY_GB: 2,

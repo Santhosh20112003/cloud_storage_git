@@ -3,7 +3,7 @@ import { useGithub } from '../context/GithubContext';
 import { FaBell, FaSearch, FaUserCircle, FaBars } from 'react-icons/fa';
 
 const Header = ({ sidebarOpen, setSidebarOpen, activeView }) => {
-  const { user } = useGithub();
+  const { user, firebaseUser } = useGithub();
   
   const getViewTitle = () => {
     switch(activeView) {
@@ -32,17 +32,16 @@ const Header = ({ sidebarOpen, setSidebarOpen, activeView }) => {
 
         <div className="flex items-center gap-3">
           
-          <div className="h-4 w-px bg-[#e1e4e8]"></div>
-          
           <div className="flex items-center gap-2 pl-1">
-            <span className="hidden sm:block text-xs font-medium text-[#24292e]">
-              {user?.displayName?.split(' ')[0] || user?.login}
-            </span>
-            {user?.photoURL || user?.avatar_url ? (
+            <div className="hidden sm:block text-xs font-medium text-end text-[#24292e]">
+              {firebaseUser?.displayName || firebaseUser?.email || user?.name || user?.login}
+              <span className="hidden lg:block text-[10px]"> ({firebaseUser?.email || user?.email})</span>
+            </div>
+            {firebaseUser?.photoURL || user?.photoURL || user?.avatar_url ? (
               <img 
-                src={user?.photoURL || user?.avatar_url} 
+                src={firebaseUser?.photoURL || user?.photoURL || user?.avatar_url} 
                 alt="profile" 
-                className="w-7 h-7 rounded border border-[#e1e4e8]" 
+                className="w-8 h-8 rounded border border-[#e1e4e8]" 
               />
             ) : (
               <FaUserCircle size={24} className="text-[#959da5]" />

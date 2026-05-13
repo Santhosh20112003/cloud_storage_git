@@ -466,22 +466,49 @@ function FontViewer({ src, name }) {
   );
 }
 
-/** OFFICE – Google Docs viewer embed */
+/** OFFICE – Support for Office Files */
 function OfficeViewer({ src, file, onDownload }) {
-  const gdocsUrl = `https://docs.google.com/gview?url=${encodeURIComponent(src)}&embedded=true`;
+  // Office Online and Google Docs require the file to be PUBLICLY accessible via a URL.
+  // Since GitHub repositories are often private or require tokens, we provide a clearer 
+  // fallback for when the external viewer cannot reach the file.
+  const officeUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(src)}`;
+  
   return (
-    <div className="w-full h-full flex flex-col bg-[#f6f8fa]">
-      <iframe src={gdocsUrl} className="flex-1 border-0" title="Document Preview"
-              sandbox="allow-scripts allow-same-origin allow-popups"/>
-      <div className="px-4 py-2 bg-white border-t border-gray-200 flex items-center justify-between text-sm shrink-0">
-        <span className="text-gray-500 text-xs">Powered by Google Docs Viewer</span>
-        <div className="flex gap-2">
-          <button onClick={() => window.open(gdocsUrl,'_blank')} className="px-3 py-1.5 border border-gray-300 rounded text-xs font-medium hover:bg-gray-50 flex items-center gap-1.5 transition-colors">
-            <FaExternalLinkAlt size={10}/> Full screen
+    <div className="w-full h-full flex flex-col bg-[#0d1117] text-white">
+      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+        <div className="w-20 h-20 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-6 border border-blue-500/20">
+          <FaFileWord size={40} className="text-blue-400" />
+        </div>
+        <h3 className="text-xl font-bold mb-2">Office Document Preview</h3>
+        <p className="text-white/50 text-sm max-w-md mb-8">
+          External viewers (Microsoft/Google) cannot access files directly from private repositories or local environments for security reasons.
+        </p>
+        
+        <div className="flex flex-wrap gap-3 justify-center">
+          <button 
+            onClick={() => window.open(officeUrl, '_blank')}
+            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold flex items-center gap-2 transition-all shadow-lg"
+          >
+            <FaExternalLinkAlt size={12}/> Try External Preview
           </button>
-          <button onClick={() => onDownload(file)} className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-500 flex items-center gap-1.5 transition-colors">
-            <FaDownload size={10}/> Download
+          <button 
+            onClick={() => onDownload(file)}
+            className="px-6 py-2.5 bg-white/5 hover:bg-white/10 border border-white/20 rounded-lg font-semibold flex items-center gap-2 transition-all"
+          >
+            <FaDownload size={12}/> Download to View
           </button>
+        </div>
+        
+        <p className="mt-8 text-[10px] text-white/30 uppercase tracking-widest font-mono">
+          Internal Viewer Coming Soon
+        </p>
+      </div>
+
+      <div className="px-4 py-3 bg-black/20 border-t border-white/5 flex items-center justify-between text-xs shrink-0">
+        <span className="text-white/40 font-medium">Notice: Enhanced security prevents direct iframe rendering</span>
+        <div className="flex items-center gap-1 text-blue-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+          Protected Mode
         </div>
       </div>
     </div>
@@ -532,9 +559,10 @@ const FilePreview = ({ file, githubToken, githubUsername, repository, onClose, o
   useEffect(() => {
     (async () => {
       try {
-        if (mediaType === 'image') {
+        if (mediaType === 'image' || mediaType === 'pdf') {
           const res = await axios.get(apiBase, { headers:apiHeaders, responseType:'blob' });
-          setDataUrl(URL.createObjectURL(new Blob([res.data])));
+          const blob = new Blob([res.data], { type: mediaType === 'pdf' ? 'application/pdf' : res.data.type });
+          setDataUrl(URL.createObjectURL(blob));
         } else if (mediaType === 'code' || mediaType === 'text') {
           if (isCSV) {
             const res = await axios.get(apiBase, { headers:apiHeaders, responseType:'text' });

@@ -6,7 +6,7 @@ import { STORAGE_CONFIG } from '../config/commonUtils';
 import toast from 'react-hot-toast';
 
 const Sidebar = ({ usedStorage, totalStorage, percentage, isOpen, setIsOpen }) => {
-  const { user, logout, repositories, repoName, switchActiveRepo, updateRepoName } = useGithub();
+  const { user, firebaseUser, logout, repositories, repoName, switchActiveRepo, updateRepoName } = useGithub();
   
   const navItems = [
     { id: 'dashboard', icon: <FaHdd />, label: 'Dashboard', path: '/dashboard/overview' },
@@ -115,19 +115,12 @@ const Sidebar = ({ usedStorage, totalStorage, percentage, isOpen, setIsOpen }) =
             </p>
           </div>
 
-          <div className="flex items-center gap-3 pt-3 border-t border-[#f1f2f3]">
-            <img 
-              src={user?.photoURL || user?.avatar_url || 'https://via.placeholder.com/32'} 
-              className="w-8 h-8 rounded border border-[#e1e4e8]" 
-              alt="User" 
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-[#24292e] truncate">{user?.name || user?.login}</p>
-              <button onClick={logout} className="text-[10px] text-[#0366d6] hover:underline flex items-center gap-1">
-                <FaSignOutAlt size={8} /> Sign Out
-              </button>
-            </div>
-          </div>
+          <button 
+            onClick={logout} 
+            className="w-full flex items-center justify-center gap-2 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 border border-red-200 rounded-md transition-colors"
+          >
+            <FaSignOutAlt size={12} /> Sign Out
+          </button>
         </div>
       </aside>
     </>

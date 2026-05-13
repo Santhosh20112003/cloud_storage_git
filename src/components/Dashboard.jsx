@@ -358,25 +358,53 @@ const Dashboard = () => {
       
       const reader = new FileReader();
       reader.onload = async (event) => {
-        const content = event.target.result.split(',')[1];
+        const base64Content = event.target.result.split(',')[1];
         try {
           const uploadPath = currentPath ? `${currentPath}/${item.name}` : item.name;
           
-          // Check if file exists to get its SHA for update (prevents 409 conflict)
-          let existingSha = null;
-          try {
-            const checkFile = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${uploadPath}`, {
-              headers: { Authorization: `Bearer ${githubToken}` }
-            });
-            existingSha = checkFile.data.sha;
-          } catch (e) {
-            // File doesn't exist, which is fine
-          }
+          // 1. Create a Blob (GitHub supports up to 100MB via Blobs)
+          const blobRes = await axios.post(`https://api.github.com/repos/${githubUsername}/${repository}/git/blobs`, {
+            content: base64Content,
+            encoding: 'base64'
+          }, {
+            headers: { Authorization: `Bearer ${githubToken}` }
+          });
+          const blobSha = blobRes.data.sha;
 
-          await axios.put(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${uploadPath}`, {
-            message: `Upload ${item.name}`,
-            content,
-            ...(existingSha && { sha: existingSha })
+          // 2. Get the current commit SHA (to build on top of it)
+          const refRes = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/git/refs/heads/main`, {
+            headers: { Authorization: `Bearer ${githubToken}` }
+          });
+          const lastCommitSha = refRes.data.object.sha;
+
+          // 3. Create a Tree with the single new file
+          // Note: base_tree is essential to keep existing files
+          const treeRes = await axios.post(`https://api.github.com/repos/${githubUsername}/${repository}/git/trees`, {
+            base_tree: lastCommitSha,
+            tree: [{
+              path: uploadPath,
+              mode: '100644', // 100644 for blob (file), 100755 for executable, 040000 for subdirectory
+              type: 'blob',
+              sha: blobSha
+            }]
+          }, {
+            headers: { Authorization: `Bearer ${githubToken}` }
+          });
+          const treeSha = treeRes.data.sha;
+
+          // 4. Create a Commit
+          const commitRes = await axios.post(`https://api.github.com/repos/${githubUsername}/${repository}/git/commits`, {
+            message: `Upload ${item.name} via Blob API`,
+            tree: treeSha,
+            parents: [lastCommitSha]
+          }, {
+            headers: { Authorization: `Bearer ${githubToken}` }
+          });
+          const commitSha = commitRes.data.sha;
+
+          // 5. Update the reference (push)
+          await axios.patch(`https://api.github.com/repos/${githubUsername}/${repository}/git/refs/heads/main`, {
+            sha: commitSha
           }, {
             headers: { Authorization: `Bearer ${githubToken}` }
           });
@@ -694,7 +722,11 @@ const Dashboard = () => {
             <div className="w-full max-w-6xl mx-auto">
               {activeView === 'dashboard' && (
                 <>
-                  <Overview totalSizeBytes={totalSizeBytes} percentage={percentage} />
+                  <Overview 
+                    totalSizeBytes={totalSizeBytes} 
+                    percentage={percentage} 
+                    firestoreFiles={firestoreFiles}
+                  />
                   <AllFiles 
                     currentPath={currentPath}
                     setCurrentPath={setCurrentPath}
