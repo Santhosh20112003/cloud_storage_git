@@ -1,8 +1,12 @@
 {
-    "routes": [
-        {
-            "src": "/[^/]*",
-            "dest": "/"
-        }
-    ]
+  "rewrites": [
+    {
+      "source": "/github-login/:path*",
+      "destination": "https://github.com/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ]
 }
