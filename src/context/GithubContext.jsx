@@ -162,7 +162,12 @@ export const GithubProvider = ({ children }) => {
       await saveUserRecord(result.user.uid, profile, result.user);
     } catch (err) {
       console.error('Google sign in failed', err);
-      setError(err.message || 'Google sign in failed');
+      // Check if it's the COOP error and provide a helpful message
+      if (err.code === 'auth/popup-blocked') {
+        setError('Sign in popup was blocked. Please allow popups for this site.');
+      } else {
+        setError(err.message || 'Google sign in failed');
+      }
     } finally {
       setLoadingAuth(false);
     }

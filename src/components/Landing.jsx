@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useGithub } from '../context/GithubContext';
 import { FaGoogle, FaCloud, FaShieldAlt } from 'react-icons/fa';
 
 const Landing = () => {
   const {
+    user,
     registerWithEmail,
     signInWithEmail,
     signInWithGoogle,
@@ -11,10 +13,17 @@ const Landing = () => {
     loadingAuth,
   } = useGithub();
 
+  const navigate = useNavigate();
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+
+  useEffect(() => {
+    if (user && !loadingAuth) {
+      navigate('/dashboard');
+    }
+  }, [user, loadingAuth, navigate]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
