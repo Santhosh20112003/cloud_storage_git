@@ -573,7 +573,7 @@ const Dashboard = () => {
 
   return (
     <div 
-      className={`flex bg-[#f6f8fa] min-h-screen font-sans text-[#24292e] relative transition-colors duration-300 ${dragActive ? 'bg-blue-50/50' : ''}`}
+      className={`flex flex-col md:flex-row bg-[#f6f8fa] min-h-screen font-sans text-[#24292e] relative transition-colors duration-300 ${dragActive ? 'bg-blue-50/50' : ''}`}
       onDragEnter={handleDrag}
       onDragOver={handleDrag}
       onDragLeave={handleDrag}
@@ -598,12 +598,12 @@ const Dashboard = () => {
         setIsOpen={setSidebarOpen}
       />
       
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} activeView={activeView} />
         
-        <div className="flex-1 overflow-y-auto p-6 md:p-8">
+        <div className="flex-1 overflow-y-auto p-2 sm:p-4 md:p-8">
           {(!isGithubConnected || repoStatus !== 'ready') ? (
-            <div className="max-w-2xl mx-auto mt-12 p-10 bg-white border border-[#e1e4e8] rounded shadow-sm text-center">
+            <div className="w-full max-w-2xl mx-auto mt-8 p-4 sm:p-8 md:p-10 bg-white border border-[#e1e4e8] rounded shadow-sm text-center">
               <div className="w-16 h-16 bg-[#f6f8fa] border border-[#e1e4e8] rounded flex items-center justify-center text-[#586069] mx-auto mb-6">
                 {loading ? <FaSpinner className="animate-spin" /> : <FaDatabase size={24} />}
               </div>
@@ -617,9 +617,9 @@ const Dashboard = () => {
               </button>
             </div>
           ) : (
-            <div className="max-w-6xl mx-auto">
+            <div className="w-full max-w-6xl mx-auto">
               {activeView === 'dashboard' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-8">
                   <div className="bg-white border border-[#e1e4e8] rounded-xl p-6 shadow-sm hover:shadow-md transition-all group cursor-default">
                     <div className="flex items-center gap-3 mb-4 text-[#586069]">
                       <FaHdd size={18} className="group-hover:text-[#24292e] transition-colors" />
@@ -655,8 +655,8 @@ const Dashboard = () => {
 
               {(activeView === 'mystorage' || activeView === 'dashboard') && (
                 <div className="bg-white border border-[#e1e4e8] rounded shadow-sm overflow-visible">
-                  <div className="px-6 py-4 flex flex-col gap-4 border-b border-[#e1e4e8] bg-[#fafbfc] rounded-t">
-                    <div className="flex items-center justify-between">
+                  <div className="px-2 sm:px-4 md:px-6 py-4 flex flex-col gap-4 border-b border-[#e1e4e8] bg-[#fafbfc] rounded-t">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
                       <div className="flex items-center gap-3">
                         {currentPath && (
                           <button onClick={() => {
@@ -677,7 +677,7 @@ const Dashboard = () => {
                     </div>
                     
                     {/* Search and Filters Bar */}
-                    <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-2">
                       <div className="relative flex-1 min-w-[200px]">
                         <input 
                           type="text"
@@ -713,8 +713,8 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                  <div className="overflow-x-visible">
-                      <table className="w-full text-left text-sm border-separate border-spacing-0">
+                    <div className="overflow-x-auto w-full">
+                      <table className="min-w-[500px] w-full text-left text-sm border-separate border-spacing-0">
                         <thead>
                           <tr className="bg-[#fafbfc] border-b border-[#e1e4e8] text-[#586069]">
                             <th className="px-6 py-3 font-semibold text-xs w-10">
@@ -747,7 +747,7 @@ const Dashboard = () => {
                                 onDoubleClick={() => handleDoubleClick(item)} 
                                 className={`hover:bg-[#f6f8fbb0] group cursor-pointer transition-colors duration-150 ${selectedFiles.includes(item.path) ? 'bg-[#f1f8ff]' : ''}`}
                               >
-                                <td className="px-6 py-3">
+                                <td className="px-4 sm:px-6 py-3">
                                   <input 
                                     type="checkbox" 
                                     className="rounded border-[#e1e4e8] transition-all group-hover:border-[#0366d6]" 
@@ -758,16 +758,16 @@ const Dashboard = () => {
                                     }} 
                                   />
                                 </td>
-                                <td className="px-6 py-3">
-                                  <div className="flex items-center gap-3 transition-transform duration-200 group-hover:translate-x-1">
+                                <td className="px-4 sm:px-6 py-3 min-w-0 max-w-xs">
+                                  <div className="flex items-center gap-3 transition-transform duration-200 group-hover:translate-x-1 min-w-0">
                                     {getFileIcon(item.name, item.type)}
-                                    <span className={item.type === 'dir' ? 'text-[#0366d6] font-medium hover:underline' : 'text-[#24292e]'}>{item.name}</span>
+                                    <span className={item.type === 'dir' ? 'text-[#0366d6] font-medium hover:underline break-all' : 'text-[#24292e] break-all truncate max-w-[120px] sm:max-w-[200px] md:max-w-[300px]'} title={item.name}>{item.name}</span>
                                   </div>
                                 </td>
-                                <td className="px-6 py-3 text-right text-[#586069] text-xs font-medium">
+                                <td className="px-4 sm:px-6 py-3 text-right text-[#586069] text-xs font-medium whitespace-nowrap">
                                   {item.displaySize}
                                 </td>
-                                <td className="px-6 py-3 text-right relative overflow-visible">
+                                <td className="px-4 sm:px-6 py-3 text-right relative overflow-visible">
                                   <button 
                                     onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === idx ? null : idx); }}
                                     className="p-2 hover:bg-[#e1e4e8] rounded-full text-[#586069] transition-colors"
@@ -777,8 +777,13 @@ const Dashboard = () => {
                                   
                                   {activeMenu === idx && (
                                     <>
-                                      <div className="fixed inset-0 z-[100]" onClick={() => setActiveMenu(null)}></div>
-                                      <div className="absolute right-6 top-0 w-48 bg-white border border-[#e1e4e8] rounded shadow-xl z-[101] overflow-hidden py-1 translate-x-0">
+                                      {/* Overlay for closing (desktop and mobile) */}
+                                      {/* Desktop overlay */}
+                                      <div className="hidden sm:block fixed inset-0 z-[100] bg-black/10" onClick={() => setActiveMenu(null)}></div>
+                                      {/* Mobile overlay with fade-in */}
+                                      <div className="sm:hidden fixed inset-0 z-[199] bg-black/40 transition-opacity duration-300 opacity-100" onClick={() => setActiveMenu(null)}></div>
+                                      {/* Desktop/Tablet Dropdown */}
+                                      <div className="hidden sm:block absolute right-6 top-0 w-48 bg-white border border-[#e1e4e8] rounded shadow-xl z-[101] overflow-hidden py-1 translate-x-0">
                                         <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDoubleClick(item); }} className="w-full px-4 py-2.5 text-left text-xs hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
                                           <FaEye className="text-[#586069] w-4" /> Preview / Open
                                         </button>
@@ -820,6 +825,53 @@ const Dashboard = () => {
                                           <FaTrash className="w-4" /> Delete
                                         </button>
                                       </div>
+                                      {/* Mobile Bottom Sheet */}
+                                      <div className="sm:hidden fixed inset-x-0 bottom-0 z-[200] bg-white border-t border-[#e1e4e8] rounded-t-2xl shadow-2xl overflow-hidden transition-transform duration-300 ease-out transform translate-y-0" style={{transform: 'translateY(0)'}}>
+                                        <div className="flex flex-col py-2">
+                                          <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDoubleClick(item); }} className="w-full px-6 py-4 text-left text-base hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
+                                            <FaEye className="text-[#586069] w-5" /> Preview / Open
+                                          </button>
+                                          <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); setDetailsFile(item); }} className="w-full px-6 py-4 text-left text-base hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
+                                            <FaLayerGroup className="text-[#586069] w-5" /> Properties
+                                          </button>
+                                          <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleDownload(item); }} className="w-full px-6 py-4 text-left text-base hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
+                                            <FaDownload className="text-[#586069] w-5" /> Download
+                                          </button>
+                                          <button onClick={(e) => { e.stopPropagation(); setActiveMenu(null); handleRename(item); }} className="w-full px-6 py-4 text-left text-base hover:bg-[#f6f8fa] flex items-center gap-3 transition-colors">
+                                            <FaEdit className="text-[#586069] w-5" /> Rename
+                                          </button>
+                                          <div className="h-[1px] bg-[#e1e4e8] my-1"></div>
+                                          <button onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            setActiveMenu(null); 
+                                            const deleteItem = async () => {
+                                              if (!window.confirm(`Delete "${item.name}"?`)) return;
+                                              const toastId = toast.loading(`Deleting ${item.name}...`);
+                                              try {
+                                                const leaves = await fetchAllLeaves(item);
+                                                for (const file of leaves) {
+                                                  await axios.delete(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
+                                                    headers: { Authorization: `Bearer ${githubToken}` },
+                                                    data: { message: `Delete ${file.path}`, sha: file.sha }
+                                                  });
+                                                }
+                                                const deletedPaths = leaves.map(f => f.path);
+                                                const updatedFiles = firestoreFiles.filter(f => !deletedPaths.includes(f.path));
+                                                await updateDoc(doc(db, 'users', firebaseUser.uid), { allFiles: updatedFiles });
+                                                toast.success('Deleted successfully', { id: toastId });
+                                                setTimeout(triggerRefresh, 1500);
+                                              } catch (err) {
+                                                toast.error('Deletion failed', { id: toastId });
+                                              }
+                                            };
+                                            deleteItem();
+                                          }} className="w-full px-6 py-4 text-left text-base hover:bg-[#feeef0] text-[#d73a49] flex items-center gap-3 transition-colors font-semibold">
+                                            <FaTrash className="w-5" /> Delete
+                                          </button>
+                                        </div>
+                                        <button onClick={() => setActiveMenu(null)} className="w-full py-3 text-[#586069] text-base font-semibold border-t border-[#e1e4e8] bg-[#fafbfc]">Cancel</button>
+                                      </div>
+                                      {/* No extra style needed, handled by Tailwind transition */}
                                     </>
                                   )}
                                 </td>
@@ -897,7 +949,7 @@ const Dashboard = () => {
       
       {/* Upload Preview Queue */}
       {uploadQueue.length > 0 && (
-        <div className="fixed bottom-6 right-6 w-80 bg-white border border-[#e1e4e8] rounded shadow-2xl z-[150] overflow-hidden flex flex-col">
+        <div className="fixed bottom-2 right-2 w-[95vw] max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg bg-white border border-[#e1e4e8] rounded shadow-2xl z-[150] overflow-hidden flex flex-col">
           <div className="px-4 py-3 bg-[#fafbfc] border-b border-[#e1e4e8] flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-[#586069]">Upload Queue ({uploadQueue.length})</span>
             <button onClick={() => setUploadQueue([])} className="text-[#586069] hover:text-[#d73a49]"><FaTimes size={12} /></button>
@@ -944,16 +996,16 @@ const Dashboard = () => {
 
       {/* Code Editor */}
       {editingFile && (
-        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-5xl h-[80vh] flex flex-col rounded border border-[#e1e4e8] shadow-2xl">
-            <div className="h-12 px-6 flex items-center justify-between border-b border-[#e1e4e8] bg-[#fafbfc]">
+        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-white w-full max-w-5xl h-[90vh] flex flex-col rounded border border-[#e1e4e8] shadow-2xl">
+            <div className="h-12 px-2 sm:px-6 flex items-center justify-between border-b border-[#e1e4e8] bg-[#fafbfc]">
               <span className="text-sm font-semibold">{editingFile.name}</span>
               <div className="flex gap-2">
                 <button onClick={() => setEditingFile(null)} className="px-3 py-1 bg-white border border-[#e1e4e8] rounded text-xs">Cancel</button>
                 <button onClick={handleSaveFile} disabled={saving} className="px-4 py-1 bg-[#2ea44f] text-white rounded text-xs font-semibold">{saving ? 'Saving...' : 'Save'}</button>
               </div>
             </div>
-            <textarea className="flex-1 p-6 font-mono text-sm outline-none resize-none bg-[#fdfdfe]" value={editorContent} onChange={e => setEditorContent(e.target.value)} spellCheck="false" />
+            <textarea className="flex-1 p-2 sm:p-6 font-mono text-sm outline-none resize-none bg-[#fdfdfe] min-w-0" value={editorContent} onChange={e => setEditorContent(e.target.value)} spellCheck="false" />
           </div>
         </div>
       )}
@@ -972,20 +1024,20 @@ const Dashboard = () => {
 
       {/* Details Side Panel */}
       {detailsFile && (
-        <div className="fixed inset-0 bg-black/20 z-[110] flex justify-end" onClick={() => setDetailsFile(null)}>
-          <div className="bg-white w-full max-w-md h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-[#e1e4e8] flex items-center justify-between bg-[#fafbfc]">
+        <div className="fixed inset-0 bg-black/20 z-[110] flex justify-end items-end sm:items-stretch" onClick={() => setDetailsFile(null)}>
+          <div className="bg-white w-full sm:max-w-md h-[90vh] sm:h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300" onClick={e => e.stopPropagation()}>
+            <div className="p-4 sm:p-6 border-b border-[#e1e4e8] flex items-center justify-between bg-[#fafbfc]">
               <h3 className="font-bold text-gray-900">File Details</h3>
               <button onClick={() => setDetailsFile(null)} className="p-2 hover:bg-[#f3f4f6] rounded transition-colors">
                 <FaTimes className="text-[#586069]" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-8">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-8">
               <div className="flex flex-col items-center mb-10 text-center">
-                <div className="w-20 h-20 bg-[#f6f8fa] border border-[#e1e4e8] rounded-2xl flex items-center justify-center text-[#0366d6] mb-4 shadow-sm">
+                <div className="w-20 h-20 bg-[#f6f8fa] border border-[#e1e4e8] rounded-2xl flex items-center justify-center text-[#0366d6] mb-4 shadow-sm mx-auto">
                   {detailsFile.type === 'dir' ? <FaFolder size={40} /> : <FaFileAlt size={40} className="text-[#959da5]" />}
                 </div>
-                <h4 className="text-lg font-bold text-gray-900 break-all">{detailsFile.name}</h4>
+                <h4 className="text-lg font-bold text-gray-900 break-all truncate max-w-full" title={detailsFile.name}>{detailsFile.name}</h4>
                 <p className="text-sm text-[#586069] mt-1">{detailsFile.type === 'dir' ? 'Folder' : 'Document'}</p>
               </div>
 
@@ -1017,7 +1069,7 @@ const Dashboard = () => {
                 <div>
                   <h5 className="text-[10px] uppercase font-bold text-[#586069] tracking-widest mb-2 px-1">Location</h5>
                   <div className="bg-[#f6f8fa] border border-[#e1e4e8] rounded-xl p-4">
-                    <p className="text-xs font-mono text-[#586069] break-all leading-relaxed">
+                    <p className="text-xs font-mono text-[#586069] break-all leading-relaxed truncate max-w-full" title={detailsFile.path}>
                       {detailsFile.path}
                     </p>
                   </div>
