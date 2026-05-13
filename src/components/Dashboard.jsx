@@ -27,11 +27,13 @@ import {
   FaFileImage,
   FaFileVideo,
   FaFileCode,
-  FaFileArchive
+  FaFileArchive,
+  FaPlus
 } from 'react-icons/fa';
 import axios from 'axios';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import FilePreview from './FilePreview';
 import toast from 'react-hot-toast';
 
 const getFileIcon = (fileName, type) => {
@@ -437,72 +439,14 @@ const Dashboard = () => {
     }
   };
 
-  const handleDoubleClick = async (file) => {
+  const handleDoubleClick = (file) => {
     if (file.type === 'dir') {
       setCurrentPath(file.path);
       return;
     }
     
-    const toastId = toast.loading(`Opening ${file.name}...`);
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    
-    // Media types
-    const images = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
-    const videos = ['mp4', 'webm'];
-    const audios = ['mp3', 'wav', 'ogg'];
-    const docs = ['pdf', 'html', 'htm'];
-    const office = ['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'];
-    const textFiles = ['txt', 'md', 'js', 'jsx', 'ts', 'tsx', 'css', 'json', 'py', 'java', 'c', 'cpp', 'sh'];
-    const binaryFiles = ['jar', 'exe', 'bin', 'zip', 'rar', '7z', 'tar', 'gz'];
-
-    try {
-      if (binaryFiles.includes(ext)) {
-        toast.dismiss(toastId);
-        toast.error('Binary files cannot be previewed. Please download them.');
-        return;
-      }
-
-      if (images.includes(ext) || videos.includes(ext) || audios.includes(ext) || docs.includes(ext)) {
-        // For PDFs, we want to try and show in iframe. 
-        // We use 'blob' for images/videos/audio to avoid issues, but for PDF we can use the raw URL if allowed, or blob.
-        const response = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
-          headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github.raw' },
-          responseType: 'blob'
-        });
-        
-        const blob = new Blob([response.data], { type: ext === 'pdf' ? 'application/pdf' : response.data.type });
-        const blobUrl = URL.createObjectURL(blob);
-        
-        let mediaType = 'unknown';
-        if (images.includes(ext)) mediaType = 'image';
-        else if (videos.includes(ext)) mediaType = 'video';
-        else if (audios.includes(ext)) mediaType = 'audio';
-        else if (ext === 'pdf') mediaType = 'pdf';
-        else if (['html', 'htm'].includes(ext)) mediaType = 'html';
-
-        toast.dismiss(toastId);
-        setPreviewFile({ ...file, dataUrl: blobUrl, mediaType });
-      } else if (office.includes(ext)) {
-        // Office files usually can't be read as raw blobs and shown in browser.
-        // Google Viewer needs a publicly accessible URL. 
-        // If the repo is private, download_url will have a token.
-        toast.dismiss(toastId);
-        setPreviewFile({ ...file, dataUrl: file.download_url, mediaType: 'office' });
-      } else {
-        // Assume text and try to edit
-        const response = await axios.get(`https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`, {
-          headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json' }
-        });
-        const content = decodeURIComponent(escape(window.atob(response.data.content)));
-        toast.dismiss(toastId);
-        setEditingFile(file);
-        setEditorContent(content);
-      }
-    } catch (err) {
-       console.error('Preview error:', err);
-       toast.dismiss(toastId);
-       window.open(file.download_url, '_blank');
-    }
+    // Open all files in the preview modal - let FilePreview component handle the logic
+    setPreviewFile(file);
   };
 
   const handleSaveFile = async () => {
@@ -1016,90 +960,14 @@ const Dashboard = () => {
 
       {/* Media Preview */}
       {previewFile && (
-        <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center sm:p-4 backdrop-blur-sm transition-all duration-300 animate-in fade-in" onClick={() => setPreviewFile(null)}>
-          <div className="bg-[#0d1117] w-full h-full sm:max-w-[95vw] sm:max-h-[95vh] flex flex-col sm:rounded-xl overflow-hidden border border-white/10 shadow-2xl animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
-            <div className="h-12 px-6 flex items-center justify-between bg-[#161b22] border-b border-white/10 text-white">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium truncate max-w-[200px] sm:max-w-md">{previewFile.name}</span>
-                <span className="text-[10px] px-2 py-0.5 bg-white/10 rounded-full text-white/60 uppercase tracking-widest leading-none">
-                  {previewFile.mediaType}
-                </span>
-              </div>
-              <button 
-                onClick={() => setPreviewFile(null)}
-                className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/70 hover:text-white"
-              >
-                <FaTimes size={18} />
-              </button>
-            </div>
-            <div className="flex-1 flex items-center justify-center p-2 sm:p-6 overflow-hidden relative bg-[#090c10]">
-              {previewFile.mediaType === 'image' && <img src={previewFile.dataUrl} className="max-w-full max-h-full object-contain" alt="Preview" />}
-              {previewFile.mediaType === 'video' && <video src={previewFile.dataUrl} controls autoPlay className="max-w-full max-h-full" />}
-              {previewFile.mediaType === 'audio' && (
-                <div className="bg-[#161b22] p-12 rounded-2xl flex flex-col items-center gap-8 border border-white/10 shadow-2xl">
-                  <div className="w-24 h-24 bg-[#1f6feb] rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(31,111,235,0.3)] animate-pulse">
-                    <FaFileVideo size={40} className="text-white" />
-                  </div>
-                  <audio src={previewFile.dataUrl} controls autoPlay className="w-80" />
-                </div>
-              )}
-              {previewFile.mediaType === 'pdf' && (
-                <object 
-                  data={previewFile.dataUrl} 
-                  type="application/pdf" 
-                  className="w-full h-full bg-white rounded-lg"
-                >
-                  <div className="flex flex-col items-center justify-center h-full text-white p-8 text-center bg-[#0d1117]">
-                    <FaFilePdf size={64} className="mb-6 text-[#f85149]" />
-                    <h3 className="text-xl font-bold mb-2">Enhanced PDF Viewer</h3>
-                    <p className="mb-8 text-white/60 max-w-sm">Direct preview is restricted. Open the document in a full window to view all pages and features.</p>
-                    <button 
-                      onClick={() => window.open(previewFile.dataUrl, '_blank')}
-                      className="px-8 py-3 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded-lg font-bold transition-all shadow-lg"
-                    >
-                      Open Document
-                    </button>
-                  </div>
-                </object>
-              )}
-              {previewFile.mediaType === 'html' && (
-                <div className="w-full h-full bg-white rounded overflow-hidden shadow-2xl flex flex-col">
-                  <div className="bg-[#f1f1f1] px-4 py-2 text-[10px] text-[#555] border-b border-[#ddd] flex items-center gap-2">
-                    <div className="flex gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-[#ff5f56]"></div><div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]"></div><div className="w-2.5 h-2.5 rounded-full bg-[#27c93f]"></div></div>
-                    <span className="font-mono">Rendered Preview</span>
-                  </div>
-                  <iframe src={previewFile.dataUrl} title="HTML Preview" className="w-full flex-1" />
-                </div>
-              )}
-              {previewFile.mediaType === 'office' && (
-                <div className="w-full h-full bg-[#f6f8fa] flex flex-col items-center justify-center p-8 text-center">
-                   <div className="bg-white p-10 rounded-xl shadow-2xl border border-[#e1e4e8] max-w-sm">
-                      <FaFileWord size={64} className="mx-auto mb-6 text-[#0366d6]" />
-                      <h3 className="text-xl font-bold mb-2">Office Document</h3>
-                      <p className="text-[#586069] text-sm mb-8">
-                        Direct preview for {previewFile.name.split('.').pop().toUpperCase()} files is restricted for security. 
-                        You can view it using Google Docs or download it.
-                      </p>
-                      <div className="flex flex-col gap-3">
-                        <button 
-                          onClick={() => window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(previewFile.dataUrl)}`, '_blank')}
-                          className="w-full py-2.5 bg-[#0366d6] text-white rounded font-semibold hover:bg-[#0256b9]"
-                        >
-                          View via Google Docs
-                        </button>
-                        <button 
-                          onClick={() => handleDownload(previewFile)}
-                          className="w-full py-2.5 border border-[#e1e4e8] text-[#24292e] rounded font-semibold hover:bg-[#f6f8fa]"
-                        >
-                          Download File
-                        </button>
-                      </div>
-                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <FilePreview 
+          file={previewFile}
+          githubToken={githubToken}
+          githubUsername={githubUsername}
+          repository={repository}
+          onClose={() => setPreviewFile(null)}
+          onDownload={handleDownload}
+        />
       )}
 
       {/* Details Side Panel */}
