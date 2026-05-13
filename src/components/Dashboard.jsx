@@ -77,10 +77,13 @@ const Dashboard = () => {
     githubToken,
     githubUsername,
     repoName,
+    repositories,
     repoStatus,
     isGithubConnected,
     connectGithubAccount,
     logout,
+    switchActiveRepo,
+    updateRepoName,
   } = useGithub();
 
   const [selectedFiles, setSelectedFiles] = React.useState([]);
@@ -176,14 +179,18 @@ const Dashboard = () => {
           else reconciledFiles.push(newFile);
         });
 
+        // Store files under a repository-specific key in Firestore
         await updateDoc(doc(db, 'users', firebaseUser.uid), { 
-          allFiles: reconciledFiles,
+          [`files_${repository.replace(/\./g, '_')}`]: reconciledFiles,
           lastSync: new Date().toISOString()
         });
       }
     } catch (err) {
-      if (err.response?.status === 404) setItems([]);
-      else console.error('Fetch error:', err);
+      if (err.response?.status === 404) {
+        setItems([]);
+        // The context handles removing the repository from the list
+        // if checkOrCreateRepo fails with a 404.
+      } else console.error('Fetch error:', err);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -199,11 +206,12 @@ const Dashboard = () => {
     const unsub = onSnapshot(doc(db, 'users', firebaseUser.uid), (doc) => {
       if (doc.exists()) {
         const data = doc.data();
-        setFirestoreFiles(data.allFiles || []);
+        const repoKey = `files_${repository.replace(/\./g, '_')}`;
+        setFirestoreFiles(data[repoKey] || []);
       }
     });
     return () => unsub();
-  }, [firebaseUser]);
+  }, [firebaseUser, repository]);
 
   // Filter items based on path from Firestore master list
   const displayItems = React.useMemo(() => {
@@ -882,24 +890,54 @@ const Dashboard = () => {
 
               {activeView === 'settings' && (
                 <div className="bg-white border border-[#e1e4e8] rounded p-8 shadow-sm">
-                  <h3 className="text-lg font-bold mb-6 border-b pb-4">Account Settings</h3>
-                  <div className="space-y-6 max-w-md">
+                  <h3 className="text-lg font-bold mb-6 border-b pb-4">Storage Management</h3>
+                  <div className="space-y-6">
                     <div>
-                      <label className="block text-xs font-bold text-[#586069] uppercase mb-2">Connected Repository</label>
-                      <div className="flex items-center gap-2 p-3 bg-[#f6f8fa] border border-[#e1e4e8] rounded text-sm text-[#24292e]">
-                        <FaLayerGroup className="text-[#959da5]" />
-                        {githubUsername}/{repository}
+                      <label className="block text-xs font-bold text-[#586069] uppercase mb-4">Your Cloud Drives</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {repositories.map((repo) => (
+                          <div 
+                            key={repo.name}
+                            onClick={() => switchActiveRepo(repo.name)}
+                            className={`p-4 border rounded-xl cursor-pointer transition-all ${
+                              repoName === repo.name 
+                                ? 'border-[#0366d6] bg-[#f1f8ff] ring-2 ring-[#0366d6]/20' 
+                                : 'border-[#e1e4e8] bg-white hover:border-[#0366d6] hover:shadow-md'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <FaHdd className={repoName === repo.name ? 'text-[#0366d6]' : 'text-[#959da5]'} />
+                              {repoName === repo.name && <span className="text-[10px] bg-[#0366d6] text-white px-2 py-0.5 rounded-full font-bold">ACTIVE</span>}
+                            </div>
+                            <p className="font-bold text-sm truncate">{repo.name}</p>
+                            <p className="text-[10px] text-[#586069] mt-1 italic">1.0 GB Capacity</p>
+                          </div>
+                        ))}
+                        {repositories.length < 3 ? (
+                          <div 
+                            onClick={() => {
+                              const nextRepoNum = repositories.length + 1;
+                              const nextName = `github-drive-${nextRepoNum}`;
+                              updateRepoName(nextName);
+                            }}
+                            className="p-4 border border-dashed border-[#e1e4e8] rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-[#f6f8fa] hover:border-[#0366d6] text-[#586069] cursor-pointer group"
+                          >
+                            <FaPlus className="group-hover:scale-110 transition-transform" />
+                            <span className="text-xs font-bold">Add New Drive</span>
+                          </div>
+                        ) : (
+                          <div className="p-4 border border-dashed border-[#e1e4e8] rounded-xl flex flex-col items-center justify-center gap-2 bg-[#f8f9fa] opacity-60 cursor-not-allowed">
+                            <span className="text-[10px] font-bold text-[#d73a49]">LIMIT REACHED</span>
+                            <span className="text-xs font-bold text-[#586069]">Maximum 3 Drives</span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-[#586069] uppercase mb-2">Cloud Provider</label>
-                      <div className="flex items-center gap-2 p-3 bg-[#f6f8fa] border border-[#e1e4e8] rounded text-sm text-[#24292e]">
-                        <FaDatabase className="text-[#959da5]" />
-                        GitHub API (Enterprise)
-                      </div>
-                    </div>
-                    <div className="pt-4">
-                      <button onClick={logout} className="px-4 py-2 bg-white border border-[#d73a49] text-[#d73a49] text-sm font-semibold rounded hover:bg-[#feeef0] transition-colors">
+
+                    <div className="pt-8 border-t">
+                       <label className="block text-xs font-bold text-[#586069] uppercase mb-2">Current Connection</label>
+                       <p className="text-xs text-[#586069] mb-4">You are currently storing data in <span className="font-bold text-[#24292e]">{githubUsername}/{repoName}</span></p>
+                       <button onClick={logout} className="px-4 py-2 bg-white border border-[#d73a49] text-[#d73a49] text-sm font-semibold rounded hover:bg-[#feeef0] transition-colors">
                         Sign Out of Session
                       </button>
                     </div>

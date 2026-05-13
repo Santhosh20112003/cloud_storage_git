@@ -10,7 +10,7 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, deleteField } from 'firebase/firestore';
 
 const GithubContext = createContext();
 
@@ -25,6 +25,7 @@ export const GithubProvider = ({ children }) => {
   const [githubToken, setGithubToken] = useState(null);
   const [githubUsername, setGithubUsername] = useState('');
   const [repoName, setRepoName] = useState('github-drive');
+  const [repositories, setRepositories] = useState([{ name: 'github-drive', isActive: true }]);
   const [repoStatus, setRepoStatus] = useState('idle');
   const [error, setError] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
@@ -41,21 +42,22 @@ export const GithubProvider = ({ children }) => {
         photoURL: profile?.photoURL || firebaseUserObj?.photoURL || '',
         username: profile?.username || profile?.name || firebaseUserObj?.displayName || '',
         githubUsername: extraPayload.githubUsername !== undefined ? extraPayload.githubUsername : (githubUsername || ''),
-        githubRepoName: extraPayload.repoName !== undefined ? extraPayload.repoName : (repoName || 'github-drive'),
         githubToken: extraPayload.githubToken !== undefined ? extraPayload.githubToken : (githubToken || ''),
         updatedAt: serverTimestamp(),
       };
 
       if (snapshot.exists()) {
+        const data = snapshot.data();
         await updateDoc(userRef, {
           ...payload,
-          githubUsername: payload.githubUsername || snapshot.data()?.githubUsername,
-          githubRepoName: payload.githubRepoName || snapshot.data()?.githubRepoName,
-          githubToken: payload.githubToken || snapshot.data()?.githubToken,
+          githubUsername: payload.githubUsername || data?.githubUsername,
+          githubToken: payload.githubToken || data?.githubToken,
+          repositories: data?.repositories || [{ name: repoName, isActive: true }]
         });
       } else {
         await setDoc(userRef, {
           ...payload,
+          repositories: [{ name: repoName, isActive: true }],
           createdAt: serverTimestamp(),
         });
       }
@@ -71,9 +73,17 @@ export const GithubProvider = ({ children }) => {
 
       if (snapshot.exists()) {
         const data = snapshot.data();
-        if (data.githubRepoName) {
+        if (data.repositories && Array.isArray(data.repositories)) {
+          setRepositories(data.repositories);
+          const active = data.repositories.find(r => r.isActive) || data.repositories[0];
+          if (active) setRepoName(active.name);
+        } else if (data.githubRepoName) {
+          // Migration path for older schema
+          const initialRepos = [{ name: data.githubRepoName, isActive: true }];
+          setRepositories(initialRepos);
           setRepoName(data.githubRepoName);
         }
+
         if (data.githubUsername) {
           setGithubUsername(data.githubUsername);
         }
@@ -210,17 +220,42 @@ export const GithubProvider = ({ children }) => {
 
   const updateRepoName = async (newRepoName) => {
     const normalized = newRepoName?.trim() || 'github-drive';
+    if (repositories.some(r => r.name === normalized)) return; // Already exists
+
+    const newRepos = [...repositories.map(r => ({ ...r, isActive: false })), { name: normalized, isActive: true }];
+    setRepositories(newRepos);
     setRepoName(normalized);
     
     if (firebaseUser) {
       try {
         const userRef = doc(db, 'users', firebaseUser.uid);
         await updateDoc(userRef, {
-          githubRepoName: normalized,
+          repositories: newRepos,
           updatedAt: serverTimestamp(),
         });
       } catch (err) {
-        console.error('Failed to update repo name', err);
+        console.error('Failed to update repo list', err);
+      }
+    }
+  };
+
+  const switchActiveRepo = async (name) => {
+    const newRepos = repositories.map(r => ({
+      ...r,
+      isActive: r.name === name
+    }));
+    setRepositories(newRepos);
+    setRepoName(name);
+
+    if (firebaseUser) {
+      try {
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        await updateDoc(userRef, {
+          repositories: newRepos,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        console.error('Failed to switch active repo', err);
       }
     }
   };
@@ -310,6 +345,35 @@ export const GithubProvider = ({ children }) => {
       setRepoStatus('ready');
     } catch (err) {
       if (err.response && err.response.status === 404) {
+        // CASE 1: Repo missing from GitHub but IS in our local repositories list
+        // This means it was manually deleted on GitHub.com
+        const isKnownRepo = repositories.some(r => r.name === repoName);
+        
+        if (isKnownRepo && repoName !== 'github-drive') {
+          console.warn(`Repository ${repoName} not found on GitHub. Removing from list.`);
+          const updatedRepos = repositories.filter(r => r.name !== repoName);
+          
+          if (updatedRepos.length > 0) {
+            updatedRepos[0].isActive = true;
+            setRepoName(updatedRepos[0].name);
+          } else {
+            setRepoName('github-drive');
+            updatedRepos.push({ name: 'github-drive', isActive: true });
+          }
+          
+          setRepositories(updatedRepos);
+          if (firebaseUser) {
+            const userRef = doc(db, 'users', firebaseUser.uid);
+            await updateDoc(userRef, { 
+              repositories: updatedRepos,
+              [`files_${repoName.replace(/\./g, '_')}`]: deleteField()
+            });
+          }
+          setRepoStatus('idle');
+          return;
+        }
+
+        // CASE 2: New repo creation (or default repo missing)
         setRepoStatus('creating');
         try {
           await axios.post('https://api.github.com/user/repos', {
@@ -327,7 +391,6 @@ export const GithubProvider = ({ children }) => {
           setRepoStatus('ready');
         } catch (creationError) {
           if (creationError.response && creationError.response.status === 422) {
-            // 422 usually means the repository already exists or the name is invalid
             setRepoStatus('ready');
           } else {
             console.error('Repo creation failed', creationError);
@@ -382,6 +445,8 @@ export const GithubProvider = ({ children }) => {
       switchGithubAccount,
       handleCallback,
       updateRepoName,
+      switchActiveRepo,
+      repositories,
     }}>
       {children}
     </GithubContext.Provider>
