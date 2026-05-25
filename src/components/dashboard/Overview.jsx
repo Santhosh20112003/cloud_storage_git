@@ -132,7 +132,48 @@ const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      {/* Upload Activity Detail Chart */}
+      <div className="bg-white border border-[#e1e4e8] rounded-xl p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-[11px] font-bold text-[#24292e] uppercase tracking-wider">Upload Frequency (7 Days)</h3>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#8a63d2]"></span>
+            <span className="text-[10px] text-[#6a737d] font-medium">Daily Operations</span>
+          </div>
+        </div>
+        <div className="h-[200px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={activityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+              <XAxis 
+                dataKey="name" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: 10, fill: '#586069' }} 
+              />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: 10, fill: '#586069' }} 
+              />
+              <Tooltip 
+                contentStyle={{ borderRadius: '8px', border: '1px solid #e1e4e8', fontSize: '11px' }}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="count" 
+                stroke="#8a63d2" 
+                fillOpacity={0.1} 
+                fill="#8a63d2" 
+                strokeWidth={2}
+                activeDot={{ r: 4, strokeWidth: 0 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="bg-white border border-[#e1e4e8] rounded-xl p-5 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-[11px] font-bold text-[#24292e] uppercase tracking-wider">File Distribution</h3>
@@ -229,47 +270,6 @@ const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Upload Activity Detail Chart */}
-      <div className="bg-white border border-[#e1e4e8] rounded-xl p-5 shadow-sm">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-[11px] font-bold text-[#24292e] uppercase tracking-wider">Upload Frequency (7 Days)</h3>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#8a63d2]"></span>
-            <span className="text-[10px] text-[#6a737d] font-medium">Daily Operations</span>
-          </div>
-        </div>
-        <div className="h-[200px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={activityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-              <XAxis 
-                dataKey="name" 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ fontSize: 10, fill: '#586069' }} 
-              />
-              <YAxis 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ fontSize: 10, fill: '#586069' }} 
-              />
-              <Tooltip 
-                contentStyle={{ borderRadius: '8px', border: '1px solid #e1e4e8', fontSize: '11px' }}
-              />
-              <Area 
-                type="monotone" 
-                dataKey="count" 
-                stroke="#8a63d2" 
-                fillOpacity={0.1} 
-                fill="#8a63d2" 
-                strokeWidth={2}
-                activeDot={{ r: 4, strokeWidth: 0 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
         </div>
       </div>
     </div>
