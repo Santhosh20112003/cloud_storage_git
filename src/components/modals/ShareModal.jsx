@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaTimes, FaShareAlt, FaCopy, FaCheck, FaLink, FaShieldAlt, FaLock, FaSpinner } from 'react-icons/fa';
+import { FaTimes, FaShareAlt, FaCopy, FaCheck, FaLink, FaShieldAlt } from 'react-icons/fa';
 import { encryptAndMinifySharePayload } from '../../config/shareCrypto';
 import toast from 'react-hot-toast';
 
@@ -28,7 +28,6 @@ const ShareModal = ({ isOpen, onClose, file, githubUsername, repository, githubT
           createdAt: Date.now()
         };
 
-        // AES-GCM 256-bit encryption + Deflate Stream minification
         const encryptedToken = await encryptAndMinifySharePayload(payload);
         const fullUrl = `${window.location.origin}/share/${encryptedToken}`;
         setShareLink(fullUrl);
@@ -49,79 +48,105 @@ const ShareModal = ({ isOpen, onClose, file, githubUsername, repository, githubT
     if (!shareLink) return;
     navigator.clipboard.writeText(shareLink);
     setCopied(true);
-    toast.success('Encrypted share link copied to clipboard!');
+    toast.success('Share link copied to clipboard!');
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[160] flex items-center justify-center p-4" onClick={onClose}>
+    <div 
+      className="fixed inset-0 z-[160] flex items-center justify-center p-4 animate-overlay-in"
+      style={{ backgroundColor: 'var(--scrim)' }}
+      onClick={onClose}
+    >
       <div
-        className="bg-white dark:bg-[#161b22] text-[#24292e] dark:text-[#c9d1d9] border border-[#e1e4e8] dark:border-[#30363d] rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200"
+        className="w-full max-w-lg flex flex-col overflow-hidden elevation-dialog animate-modal-in"
+        style={{
+          backgroundColor: 'var(--surface)',
+          borderRadius: '12px',
+          border: '1px solid var(--outline-variant)',
+          color: 'var(--on-surface)'
+        }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-[#e1e4e8] dark:border-[#30363d] flex items-center justify-between bg-[#fafbfc] dark:bg-[#0d1117]">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-50 dark:bg-blue-900/30 text-[#0366d6] dark:text-[#58a6ff] rounded-xl">
-              <FaShareAlt size={16} />
-            </div>
-            <div>
-              <h3 className="font-semibold text-sm text-[#24292e] dark:text-white">Encrypted Share Link</h3>
-              <p className="text-xs text-[#586069] dark:text-[#8b949e] truncate max-w-sm">{file.name}</p>
-            </div>
+        <div 
+          className="h-14 px-6 flex items-center justify-between"
+          style={{
+            borderBottom: '1px solid var(--outline-variant)',
+            backgroundColor: 'var(--surface-variant)'
+          }}
+        >
+          <div className="flex items-center gap-2.5">
+            <FaShareAlt size={14} style={{ color: 'var(--primary)' }} />
+            <h3 className="font-medium text-sm" style={{ color: 'var(--on-surface)' }}>
+              Share link
+            </h3>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 hover:bg-[#f3f4f6] dark:hover:bg-[#21262d] rounded-md text-[#586069] dark:text-[#8b949e] transition-colors"
+          <button 
+            onClick={onClose} 
+            className="p-1.5 rounded-full hover:bg-[#E8EAED] transition-colors"
+            style={{ color: 'var(--on-surface-variant)' }}
           >
-            <FaTimes size={16} />
+            <FaTimes size={14} />
           </button>
         </div>
 
-        {/* Security badge notice */}
-        <div className="px-6 py-3 bg-emerald-50/60 dark:bg-emerald-950/20 border-b border-emerald-200/50 dark:border-emerald-900/30 flex items-center gap-2.5 text-xs text-emerald-800 dark:text-emerald-300">
-          <FaShieldAlt className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-          <span>
-            Protected with <strong>AES-256-GCM + Deflate Minification</strong>. Keeps your GitHub repo private and token shielded.
-          </span>
-        </div>
-
-        {/* Body Link Box */}
         <div className="p-6 space-y-4">
           <div>
-            <label className="text-xs font-semibold text-[#586069] dark:text-[#8b949e] uppercase tracking-wider block mb-2 flex items-center gap-1.5">
-              <FaLock className="text-[#0366d6]" /> Minified & Encrypted URL
-            </label>
+            <p className="text-xs font-medium mb-1" style={{ color: 'var(--on-surface-variant)' }}>
+              File name
+            </p>
+            <p className="text-sm font-medium truncate" style={{ color: 'var(--on-surface)' }}>
+              {file.name}
+            </p>
+          </div>
 
-            {encrypting ? (
-              <div className="py-4 text-center text-xs text-[#586069] dark:text-[#8b949e]">
-                <FaSpinner className="animate-spin inline mr-2 text-[#0366d6]" /> Compressing & Encrypting token...
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={shareLink}
-                  className="flex-1 px-3 py-2.5 text-xs font-mono bg-[#f6f8fa] dark:bg-[#0d1117] border border-[#e1e4e8] dark:border-[#30363d] rounded-xl select-all outline-none text-[#24292e] dark:text-[#c9d1d9] focus:border-[#0366d6]"
-                />
-                <button
-                  onClick={copyToClipboard}
-                  className="px-4 py-2.5 bg-[#0366d6] hover:bg-[#0256b4] text-white text-xs font-semibold rounded-xl flex items-center gap-2 transition-colors shrink-0 shadow-xs cursor-pointer"
-                >
-                  {copied ? <FaCheck /> : <FaCopy />} {copied ? 'Copied' : 'Copy Link'}
-                </button>
-              </div>
-            )}
+          <div>
+            <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--on-surface-variant)' }}>
+              Encrypted public link
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={encrypting ? 'Generating encrypted key...' : shareLink}
+                className="flex-1 h-10 px-3 text-xs font-mono outline-none"
+                style={{
+                  backgroundColor: 'var(--surface-variant)',
+                  color: 'var(--on-surface)',
+                  borderRadius: '8px',
+                  border: '1px solid var(--outline)'
+                }}
+              />
+              <button
+                onClick={copyToClipboard}
+                disabled={!shareLink || encrypting}
+                className="h-10 px-5 text-xs font-medium rounded-full flex items-center gap-2 transition-colors cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--primary)',
+                  color: 'var(--on-primary)'
+                }}
+              >
+                {copied ? <FaCheck size={12} /> : <FaCopy size={12} />}
+                <span>{copied ? 'Copied' : 'Copy'}</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-3.5 border-t border-[#e1e4e8] dark:border-[#30363d] bg-[#fafbfc] dark:bg-[#0d1117] flex justify-between items-center text-xs text-[#586069] dark:text-[#8b949e]">
-          <span>Length minified using Deflate compression</span>
+        <div 
+          className="px-6 py-3.5 flex justify-end"
+          style={{
+            borderTop: '1px solid var(--outline-variant)',
+            backgroundColor: 'var(--surface-variant)'
+          }}
+        >
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-[#f6f8fa] dark:bg-[#21262d] hover:bg-[#e1e4e8] dark:hover:bg-[#30363d] border border-[#e1e4e8] dark:border-[#30363d] rounded-lg font-medium transition-colors text-xs"
+            className="h-9 px-5 text-xs font-medium rounded-full cursor-pointer hover:bg-white"
+            style={{
+              border: '1px solid var(--outline)',
+              color: 'var(--on-surface)'
+            }}
           >
             Done
           </button>

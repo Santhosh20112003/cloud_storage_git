@@ -1,23 +1,27 @@
 import React from 'react';
 import { 
-  FaArrowLeft, FaTrash, FaFolderPlus, FaUpload, 
-  FaSearch, FaSpinner, FaFolder, FaEllipsisV,
-  FaThLarge, FaList, FaShareAlt, FaHistory, FaStar, FaRegStar, FaEdit
+  FaArrowLeft, 
+  FaTrash, 
+  FaFolderPlus, 
+  FaUpload, 
+  FaSearch, 
+  FaSpinner, 
+  FaFolder, 
+  FaEllipsisV,
+  FaThLarge, 
+  FaList, 
+  FaShareAlt, 
+  FaHistory, 
+  FaStar, 
+  FaRegStar, 
+  FaEdit,
+  FaSort,
+  FaSortUp,
+  FaSortDown,
+  FaTimes
 } from 'react-icons/fa';
-
-// List of editable text/code file extensions
-const EDITABLE_EXTS = new Set([
-  'txt', 'md', 'json', 'js', 'jsx', 'ts', 'tsx', 'html', 'css', 'scss', 'sass', 'less',
-  'py', 'java', 'c', 'cpp', 'h', 'cs', 'rs', 'go', 'php', 'rb', 'swift', 'kt',
-  'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd', 'yaml', 'yml', 'xml', 'toml', 'ini',
-  'env', 'conf', 'properties', 'sql', 'dockerfile', 'svg', 'log', 'csv', 'tsv'
-]);
-
-const isFileEditable = (item) => {
-  if (!item || item.type === 'dir') return false;
-  const ext = item.name?.split('.').pop()?.toLowerCase();
-  return EDITABLE_EXTS.has(ext);
-};
+import { getFileIcon, getFileIndicatorColor } from '../fileIndicators';
+import { isFileEditable } from '../../config/commonUtils';
 
 const AllFiles = ({ 
   currentPath, 
@@ -36,7 +40,6 @@ const AllFiles = ({
   loading, 
   filteredItems, 
   handleDoubleClick, 
-  getFileIcon, 
   setDetailsFile,
   activeView,
   viewMode = 'list',
@@ -48,240 +51,337 @@ const AllFiles = ({
   toggleStar
 }) => {
   return (
-    <div className="bg-white dark:bg-[#161b22] border border-[#e1e4e8] dark:border-[#30363d] rounded-xl shadow-sm overflow-visible text-[#24292e] dark:text-[#c9d1d9] transition-colors duration-200">
-      {/* Top Header & Breadcrumb */}
-      <div className="px-4 sm:px-6 py-4 flex flex-col gap-4 border-b border-[#e1e4e8] dark:border-[#30363d] bg-[#fafbfc] dark:bg-[#0d1117] rounded-t-xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            {currentPath && (
+    <div 
+      className="w-full flex flex-col"
+      style={{
+        backgroundColor: 'var(--surface)',
+        color: 'var(--on-surface)'
+      }}
+    >
+      {/* Breadcrumbs & Primary Actions Row: Authentic Drive style */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 mb-3" style={{ borderBottom: '1px solid var(--outline-variant)' }}>
+        {/* Breadcrumb Hierarchy with rounded hover state */}
+        <div className="flex items-center gap-1.5 flex-wrap text-sm" style={{ color: 'var(--on-surface-variant)' }}>
+          {currentPath && (
+            <button 
+              onClick={() => {
+                const parts = currentPath.split('/'); 
+                parts.pop(); 
+                setCurrentPath(parts.join('/'));
+              }} 
+              className="p-1.5 rounded-full hover:bg-black/5 transition-colors mr-1"
+              style={{ color: 'var(--on-surface-variant)' }}
+              title="Navigate up"
+            >
+              <FaArrowLeft size={12} />
+            </button>
+          )}
+
+          <button 
+            className="px-2 py-1 rounded-md hover:bg-black/5 transition-colors text-base font-medium"
+            style={{ color: !currentPath ? 'var(--on-surface)' : 'var(--on-surface-variant)' }}
+            onClick={() => setCurrentPath('')}
+          >
+            My Drive
+          </button>
+
+          {currentPath && currentPath.split('/').map((folder, idx, arr) => (
+            <React.Fragment key={idx}>
+              <span className="text-xs" style={{ color: 'var(--on-surface-variant)' }}>/</span>
               <button 
+                className={`px-2 py-1 rounded-md hover:bg-black/5 transition-colors text-sm ${idx === arr.length - 1 ? 'font-medium' : ''}`}
+                style={{ color: idx === arr.length - 1 ? 'var(--on-surface)' : 'var(--on-surface-variant)' }}
                 onClick={() => {
-                  const parts = currentPath.split('/'); 
-                  parts.pop(); 
-                  setCurrentPath(parts.join('/'));
-                }} 
-                className="p-1.5 text-[#586069] dark:text-[#8b949e] hover:bg-[#f3f4f6] dark:hover:bg-[#21262d] rounded-md transition-colors"
-                title="Go up"
+                  const newPath = arr.slice(0, idx + 1).join('/');
+                  setCurrentPath(newPath);
+                }}
               >
-                <FaArrowLeft size={12} />
+                {folder}
               </button>
-            )}
-            <div className="flex items-center gap-1.5 text-sm font-semibold">
-              <span 
-                className="cursor-pointer hover:text-[#0366d6] dark:hover:text-[#58a6ff] transition-colors"
-                onClick={() => setCurrentPath('')}
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* Action Controls & View Switcher */}
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          {/* Authentic Google Drive Multi-Selection Action Pill */}
+          {selectedFiles.length > 0 && (
+            <div 
+              className="flex items-center gap-1.5 px-2 py-1 rounded-full shadow-sm mr-2 transition-all animate-fadeIn"
+              style={{
+                backgroundColor: 'var(--surface-variant)',
+                border: '1px solid var(--outline-variant)'
+              }}
+            >
+              {/* Deselect / Close 'X' Button */}
+              <button
+                onClick={() => setSelectedFiles([])}
+                className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-black/10 active:bg-black/15 transition-colors cursor-pointer text-[#444746]"
+                title="Clear selection (Esc)"
               >
-                {activeView === 'dashboard' ? 'Recent Files' : 'Drive'}
+                <FaTimes size={11} />
+              </button>
+
+              {/* Selection Count */}
+              <span 
+                className="text-xs font-medium px-1 select-none"
+                style={{ color: 'var(--on-surface)' }}
+              >
+                {selectedFiles.length} selected
               </span>
-              {currentPath && currentPath.split('/').map((folder, idx, arr) => (
-                <React.Fragment key={idx}>
-                  <span className="text-[#959da5] dark:text-[#6e7681]">/</span>
-                  <span 
-                    className={`cursor-pointer hover:text-[#0366d6] dark:hover:text-[#58a6ff] transition-colors ${idx === arr.length - 1 ? 'text-[#0366d6] dark:text-[#58a6ff]' : ''}`}
-                    onClick={() => {
-                      const newPath = arr.slice(0, idx + 1).join('/');
-                      setCurrentPath(newPath);
-                    }}
-                  >
-                    {folder}
-                  </span>
-                </React.Fragment>
-              ))}
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
-            {/* View switcher: Grid / List */}
-            {setViewMode && (
-              <div className="flex items-center bg-[#f0f2f5] dark:bg-[#21262d] rounded-lg p-0.5 border border-[#e1e4e8] dark:border-[#30363d]">
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`p-1.5 rounded-md text-xs transition-colors ${viewMode === 'list' ? 'bg-white dark:bg-[#161b22] text-[#0366d6] dark:text-[#58a6ff] shadow-xs' : 'text-[#586069] dark:text-[#8b949e]'}`}
-                  title="List View"
-                >
-                  <FaList size={13} />
-                </button>
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={`p-1.5 rounded-md text-xs transition-colors ${viewMode === 'grid' ? 'bg-white dark:bg-[#161b22] text-[#0366d6] dark:text-[#58a6ff] shadow-xs' : 'text-[#586069] dark:text-[#8b949e]'}`}
-                  title="Grid View"
-                >
-                  <FaThLarge size={13} />
-                </button>
-              </div>
-            )}
+              <div className="h-4 w-[1px] bg-black/10 mx-0.5" />
 
-            {selectedFiles.length > 0 && (
+              {/* Delete Action Button */}
               <button 
                 onClick={handleDelete} 
-                className="px-3 py-1.5 bg-red-50 dark:bg-red-950/40 border border-[#d73a49] text-[#d73a49] text-xs font-semibold rounded-lg hover:bg-[#d73a49] hover:text-white flex items-center gap-1.5 transition-colors"
+                className="h-7 px-2.5 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer rounded-full hover:opacity-90 active:scale-95"
+                style={{
+                  backgroundColor: 'var(--error)',
+                  color: '#FFFFFF'
+                }}
+                title="Delete selected"
               >
-                <FaTrash size={12} /> Delete ({selectedFiles.length})
+                <FaTrash size={10} />
+                <span>Delete</span>
               </button>
-            )}
-            
-            <button 
-              onClick={handleCreateFolder} 
-              className="px-3 py-1.5 bg-white dark:bg-[#21262d] border border-[#e1e4e8] dark:border-[#30363d] hover:border-[#0366d6] text-[#24292e] dark:text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors shadow-2xs"
-            >
-              <FaFolderPlus size={12} className="text-[#0366d6] dark:text-[#58a6ff]" /> New Folder
-            </button>
-            
-            <button 
-              onClick={() => fileInputRef.current?.click()} 
-              className="px-3.5 py-1.5 bg-[#2ea44f] hover:bg-[#2c974b] text-white text-xs font-semibold rounded-lg shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <FaUpload size={12} /> Upload
-            </button>
-          </div>
-        </div>
-        
-        {/* Search and Filters Bar */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-1">
-          <div className="relative flex-1 min-w-[200px]">
-            <input 
-              type="text"
-              placeholder="Search files and folders in drive..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-[#0d1117] border border-[#e1e4e8] dark:border-[#30363d] rounded-lg text-xs sm:text-sm text-[#24292e] dark:text-[#c9d1d9] focus:ring-2 focus:ring-[#0366d6]/20 focus:border-[#0366d6] outline-none transition-all placeholder:text-[#959da5] dark:placeholder:text-[#6e7681]"
-            />
-            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-[#959da5] dark:text-[#6e7681]" size={13} />
-          </div>
-          
-          <select 
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="px-3 py-1.5 bg-white dark:bg-[#0d1117] border border-[#e1e4e8] dark:border-[#30363d] rounded-lg text-xs font-medium text-[#586069] dark:text-[#8b949e] outline-none hover:border-[#0366d6] dark:hover:border-[#58a6ff] transition-colors cursor-pointer"
-          >
-            <option value="all">All File Types</option>
-            <option value="image">Images</option>
-            <option value="video">Videos</option>
-            <option value="pdf">PDFs</option>
-            <option value="doc">Documents</option>
-          </select>
+            </div>
+          )}
 
+          {/* View switcher (Chips 8px radius) */}
+          {setViewMode && (
+            <div 
+              className="flex items-center p-0.5" 
+              style={{ 
+                backgroundColor: 'var(--surface-variant)', 
+                borderRadius: '8px',
+                border: '1px solid var(--outline-variant)'
+              }}
+            >
+              <button
+                onClick={() => setViewMode('list')}
+                className="p-1.5 transition-colors"
+                style={{
+                  borderRadius: '6px',
+                  backgroundColor: viewMode === 'list' ? 'var(--primary-container)' : 'transparent',
+                  color: viewMode === 'list' ? 'var(--primary)' : 'var(--on-surface-variant)',
+                  border: viewMode === 'list' ? '1px solid #D2E3FC' : '1px solid transparent'
+                }}
+                title="List view"
+              >
+                <FaList size={13} />
+              </button>
+              <button
+                onClick={() => setViewMode('grid')}
+                className="p-1.5 transition-colors"
+                style={{
+                  borderRadius: '6px',
+                  backgroundColor: viewMode === 'grid' ? 'var(--primary-container)' : 'transparent',
+                  color: viewMode === 'grid' ? 'var(--primary)' : 'var(--on-surface-variant)',
+                  border: viewMode === 'grid' ? '1px solid #D2E3FC' : '1px solid transparent'
+                }}
+                title="Grid view"
+              >
+                <FaThLarge size={13} />
+              </button>
+            </div>
+          )}
+
+          <button 
+            onClick={handleCreateFolder} 
+            className="h-8 px-3.5 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer hover:bg-black/5"
+            style={{
+              borderRadius: '18px',
+              backgroundColor: 'var(--surface)',
+              color: 'var(--on-surface)',
+              border: '1px solid var(--outline)'
+            }}
+          >
+            <FaFolderPlus size={11} style={{ color: 'var(--primary)' }} />
+            <span>New folder</span>
+          </button>
+
+          <button 
+            onClick={() => fileInputRef.current?.click()} 
+            className="h-8 px-4 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            style={{
+              borderRadius: '18px',
+              backgroundColor: 'var(--primary)',
+              color: 'var(--on-primary)'
+            }}
+          >
+            <FaUpload size={11} />
+            <span>Upload</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Filter Chips Bar (Light minimalist pills matching Drive) */}
+      <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+        <div className="flex items-center gap-1.5">
+          {[
+            { id: 'all', label: 'All types' },
+            { id: 'pdf', label: 'PDFs' },
+            { id: 'doc', label: 'Documents' },
+            { id: 'image', label: 'Images' },
+            { id: 'video', label: 'Videos' }
+          ].map(chip => (
+            <button
+              key={chip.id}
+              onClick={() => setFilterType(chip.id)}
+              className="px-3 py-1 rounded-full text-xs font-medium transition-all whitespace-nowrap cursor-pointer"
+              style={{
+                backgroundColor: filterType === chip.id ? 'var(--primary-container)' : 'var(--surface)',
+                color: filterType === chip.id ? 'var(--primary)' : 'var(--on-surface-variant)',
+                border: filterType === chip.id ? '1px solid #D2E3FC' : '1px solid var(--outline)'
+              }}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
           <select 
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="px-3 py-1.5 bg-white dark:bg-[#0d1117] border border-[#e1e4e8] dark:border-[#30363d] rounded-lg text-xs font-medium text-[#586069] dark:text-[#8b949e] outline-none hover:border-[#0366d6] dark:hover:border-[#58a6ff] transition-colors cursor-pointer"
+            className="h-7 px-2.5 text-xs font-medium outline-none cursor-pointer rounded-full"
+            style={{
+              backgroundColor: 'var(--surface)',
+              color: 'var(--on-surface-variant)',
+              border: '1px solid var(--outline)'
+            }}
           >
-            <option value="name">Sort by Name</option>
-            <option value="date">Sort by Recent</option>
-            <option value="size">Sort by Size</option>
+            <option value="name">Sort: Name</option>
+            <option value="date">Sort: Last modified</option>
+            <option value="size">Sort: File size</option>
           </select>
         </div>
       </div>
 
-      {/* Main Files Presentation: Grid or List */}
+      {/* Content Area Presentation */}
       {viewMode === 'grid' ? (
-        <div className="p-4 sm:p-6 min-h-[300px]">
+        /* Grid cards: Auto-fill, min 180px, 8px gap. Radius: 8px, 1px --outline-variant border, NO shadows */
+        <div>
           {loading && filteredItems.length === 0 ? (
-            <div className="py-20 text-center text-[#586069] dark:text-[#8b949e]">
-              <FaSpinner className="animate-spin inline mr-2 text-[#0366d6]" /> Syncing files from Git...
+            <div className="py-24 text-center text-sm" style={{ color: 'var(--on-surface-variant)' }}>
+              <FaSpinner className="animate-spin inline mr-2" style={{ color: 'var(--primary)' }} /> Loading files...
             </div>
           ) : filteredItems.length === 0 ? (
-            <div className="py-20 text-center text-[#586069] dark:text-[#8b949e]">
-              <FaFolder size={44} className="mx-auto mb-3 opacity-30 text-[#0366d6]" />
-              <p className="font-semibold text-sm">No files or folders found</p>
-              <p className="text-xs mt-1">Upload a file or drag and drop items here to get started.</p>
+            /* Empty state: Centered: simple line illustration + one sentence + one primary CTA button */
+            <div className="py-24 text-center flex flex-col items-center justify-center max-w-sm mx-auto">
+              <div 
+                className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
+                style={{ backgroundColor: 'var(--surface-variant)', border: '1px solid var(--outline-variant)' }}
+              >
+                <FaFolder size={28} style={{ color: 'var(--on-surface-variant)' }} />
+              </div>
+              <p className="text-sm font-medium mb-1" style={{ color: 'var(--on-surface)' }}>No files found</p>
+              <p className="text-xs mb-6" style={{ color: 'var(--on-surface-variant)' }}>Upload your first file to get started.</p>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="h-10 px-6 text-xs font-medium transition-colors"
+                style={{
+                  borderRadius: '20px',
+                  backgroundColor: 'var(--primary)',
+                  color: 'var(--on-primary)'
+                }}
+              >
+                Upload your first file
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+            <div 
+              className="grid gap-2"
+              style={{
+                gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))'
+              }}
+            >
               {filteredItems.map((item, idx) => {
                 const isSelected = selectedFiles.includes(item.path);
                 const isStarred = starredPaths.includes(item.path);
                 const canEdit = isFileEditable(item);
+                const indicatorColor = getFileIndicatorColor(item.name, item.type);
 
                 return (
                   <div
                     key={idx}
                     onDoubleClick={() => handleDoubleClick(item)}
-                    className={`relative group bg-[#f6f8fa] dark:bg-[#0d1117]/60 border rounded-xl p-3 flex flex-col justify-between hover:border-[#0366d6] dark:hover:border-[#58a6ff] hover:shadow-md cursor-pointer transition-all duration-150 select-none ${
-                      isSelected 
-                        ? 'border-[#0366d6] bg-blue-50/50 dark:bg-blue-950/30' 
-                        : 'border-[#e1e4e8] dark:border-[#30363d]'
-                    }`}
+                    onClick={() => {
+                      setSelectedFiles(prev => prev.includes(item.path) ? prev.filter(p => p !== item.path) : [...prev, item.path]);
+                    }}
+                    className="relative group p-3 flex flex-col justify-between cursor-pointer select-none transition-colors"
+                    style={{
+                      borderRadius: '8px',
+                      backgroundColor: isSelected ? 'var(--primary-container)' : 'var(--surface)',
+                      border: isSelected ? '1px solid var(--primary)' : '1px solid var(--outline-variant)',
+                      borderLeft: isSelected ? '3px solid var(--primary)' : '1px solid var(--outline-variant)'
+                    }}
                   >
-                    {/* Top Row: checkbox and favorite */}
+                    {/* Top Meta Bar */}
                     <div className="flex items-center justify-between mb-2">
                       <input 
-                        type="checkbox" 
-                        className="rounded border-[#e1e4e8] dark:border-[#30363d] cursor-pointer"
+                        type="checkbox"
                         checked={isSelected}
                         onChange={(e) => {
                           e.stopPropagation();
                           setSelectedFiles(prev => prev.includes(item.path) ? prev.filter(p => p !== item.path) : [...prev, item.path]);
                         }}
+                        className={`w-4 h-4 rounded cursor-pointer accent-[#1A73E8] ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
                       />
-                      {toggleStar && (
+                      
+                      <div className="flex items-center gap-1">
+                        {toggleStar && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleStar(item.path); }}
+                            className={`p-1 rounded ${isStarred ? '' : 'opacity-0 group-hover:opacity-100'}`}
+                            style={{ color: isStarred ? '#E8710A' : 'var(--on-surface-variant)' }}
+                            title={isStarred ? 'Starred' : 'Star file'}
+                          >
+                            {isStarred ? <FaStar size={12} /> : <FaRegStar size={12} />}
+                          </button>
+                        )}
                         <button
-                          onClick={(e) => { e.stopPropagation(); toggleStar(item.path); }}
-                          className={`p-1 rounded hover:bg-white dark:hover:bg-[#21262d] transition-colors ${isStarred ? 'text-amber-500' : 'text-[#959da5] dark:text-[#6e7681] opacity-0 group-hover:opacity-100'}`}
-                          title={isStarred ? 'Remove from Starred' : 'Add to Starred'}
+                          onClick={(e) => { e.stopPropagation(); setDetailsFile(item); }}
+                          className="p-1 rounded opacity-0 group-hover:opacity-100"
+                          style={{ color: 'var(--on-surface-variant)' }}
+                          title="Options"
                         >
-                          {isStarred ? <FaStar size={13} /> : <FaRegStar size={13} />}
+                          <FaEllipsisV size={11} />
                         </button>
-                      )}
+                      </div>
                     </div>
 
-                    {/* Icon / Preview Center */}
-                    <div className="flex flex-col items-center justify-center py-4">
-                      <div className="text-3xl mb-2 transition-transform group-hover:scale-110 duration-200">
-                        {getFileIcon(item.name, item.type)}
+                    {/* Icon & File Name */}
+                    <div className="py-4 flex flex-col items-center text-center">
+                      <div className="mb-2">
+                        {getFileIcon(item.name, item.type, 32)}
                       </div>
-                      <p className="text-xs font-semibold text-center truncate max-w-full px-1 text-[#24292e] dark:text-white" title={item.name}>
+                      <p 
+                        className="text-sm font-medium truncate w-full px-1" 
+                        style={{ color: isSelected ? 'var(--on-primary-container)' : 'var(--on-surface)' }}
+                        title={item.name}
+                      >
                         {item.name}
                       </p>
-                      <div className="flex items-center gap-1.5 mt-1 text-[10px] text-[#586069] dark:text-[#8b949e]">
+                      <div className="flex items-center gap-2 mt-1 font-mono text-xs" style={{ color: 'var(--on-surface-variant)' }}>
                         <span>{item.displaySize}</span>
-                        {item.repoName && (
-                          <span className="bg-[#e1e4e8] dark:bg-[#30363d] px-1 py-0.2 rounded font-mono text-[9px]">
-                            {item.repoName}
-                          </span>
-                        )}
                       </div>
                     </div>
 
-                    {/* Card Actions Bottom */}
-                    <div className="flex items-center justify-between pt-2 border-t border-[#e1e4e8]/60 dark:border-[#30363d]/60 mt-2">
-                      <div className="flex items-center gap-1">
-                        {canEdit && onEditFile && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onEditFile(item); }}
-                            className="p-1 hover:text-[#2ea44f] text-[#586069] dark:text-[#8b949e] rounded transition-colors"
-                            title="Edit File"
-                          >
-                            <FaEdit size={11} className="text-[#2ea44f]" />
-                          </button>
-                        )}
-                        {item.type !== 'dir' && onOpenShare && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onOpenShare(item); }}
-                            className="p-1 hover:text-[#0366d6] dark:hover:text-[#58a6ff] text-[#586069] dark:text-[#8b949e] rounded transition-colors"
-                            title="Share Link"
-                          >
-                            <FaShareAlt size={11} />
-                          </button>
-                        )}
-                        {item.type !== 'dir' && onOpenHistory && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onOpenHistory(item); }}
-                            className="p-1 hover:text-[#0366d6] dark:hover:text-[#58a6ff] text-[#586069] dark:text-[#8b949e] rounded transition-colors"
-                            title="Git Commit History"
-                          >
-                            <FaHistory size={11} />
-                          </button>
-                        )}
+                    {/* Quick Edit shortcut if editable */}
+                    {canEdit && onEditFile && (
+                      <div className="pt-2 flex justify-end" style={{ borderTop: '1px solid var(--outline-variant)' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onEditFile(item); }}
+                          className="text-[11px] flex items-center gap-1 p-1 hover:underline font-medium"
+                          style={{ color: 'var(--primary)' }}
+                          title="Edit file"
+                        >
+                          <FaEdit size={10} /> Edit
+                        </button>
                       </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setDetailsFile(item); }}
-                        className="p-1 hover:bg-[#e1e4e8] dark:hover:bg-[#21262d] rounded-full text-[#586069] dark:text-[#8b949e] transition-colors"
-                        title="More details"
-                      >
-                        <FaEllipsisV size={11} />
-                      </button>
-                    </div>
+                    )}
                   </div>
                 );
               })}
@@ -289,40 +389,109 @@ const AllFiles = ({
           )}
         </div>
       ) : (
-        /* Table / List View */
-        <div className="overflow-x-auto w-full">
-          <table className="min-w-[600px] w-full text-left text-sm border-separate border-spacing-0">
+        /* List rows: 48px height, 16px horizontal padding, 1px bottom border (--outline-variant) */
+        <div className="w-full overflow-x-auto">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-[#fafbfc] dark:bg-[#0d1117] border-b border-[#e1e4e8] dark:border-[#30363d] text-[#586069] dark:text-[#8b949e]">
-                <th className="px-4 sm:px-6 py-3 font-semibold text-xs w-10">
+              <tr 
+                className="h-10 text-xs font-medium"
+                style={{
+                  borderBottom: '1px solid var(--outline-variant)',
+                  color: 'var(--on-surface-variant)'
+                }}
+              >
+                <th className="w-10 px-4">
                   <input 
-                    type="checkbox" 
-                    className="rounded border-[#e1e4e8] dark:border-[#30363d]" 
-                    onChange={(e) => setSelectedFiles(e.target.checked ? filteredItems.map(i => i.path) : [])} 
-                    checked={filteredItems.length > 0 && selectedFiles.length === filteredItems.length} 
+                    type="checkbox"
+                    checked={filteredItems.length > 0 && filteredItems.every(f => selectedFiles.includes(f.path))}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        const allPaths = Array.from(new Set([...selectedFiles, ...filteredItems.map(f => f.path)]));
+                        setSelectedFiles(allPaths);
+                      } else {
+                        const currentPaths = new Set(filteredItems.map(f => f.path));
+                        setSelectedFiles(prev => prev.filter(p => !currentPaths.has(p)));
+                      }
+                    }}
+                    className="w-4 h-4 rounded cursor-pointer accent-[#1A73E8]"
+                    title="Select all"
                   />
                 </th>
-                <th className="px-2 py-3 font-semibold text-xs w-8"></th>
-                <th className="px-4 py-3 font-semibold text-xs">Name</th>
-                <th className="px-4 py-3 font-semibold text-xs hidden md:table-cell">Last Modified</th>
-                <th className="px-4 py-3 font-semibold text-xs text-right">Size</th>
-                <th className="px-4 sm:px-6 py-3 font-semibold text-xs text-right w-36">Actions</th>
+                <th 
+                  className="px-4 cursor-pointer hover:bg-black/5 transition-colors select-none"
+                  onClick={() => setSortBy && setSortBy('name')}
+                  title="Sort by Name"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Name</span>
+                    {sortBy === 'name' ? (
+                      <FaSortUp size={11} style={{ color: 'var(--primary)' }} />
+                    ) : (
+                      <FaSort size={10} className="opacity-40" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-4 hidden md:table-cell cursor-pointer hover:bg-black/5 transition-colors select-none"
+                  onClick={() => setSortBy && setSortBy('date')}
+                  title="Sort by Last modified"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Last modified</span>
+                    {sortBy === 'date' ? (
+                      <FaSortDown size={11} style={{ color: 'var(--primary)' }} />
+                    ) : (
+                      <FaSort size={10} className="opacity-40" />
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-4 text-right cursor-pointer hover:bg-black/5 transition-colors select-none"
+                  onClick={() => setSortBy && setSortBy('size')}
+                  title="Sort by File size"
+                >
+                  <div className="flex items-center justify-end gap-1.5">
+                    <span>File size</span>
+                    {sortBy === 'size' ? (
+                      <FaSortDown size={11} style={{ color: 'var(--primary)' }} />
+                    ) : (
+                      <FaSort size={10} className="opacity-40" />
+                    )}
+                  </div>
+                </th>
+                <th className="w-12 px-4 text-right"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#e1e4e8] dark:divide-[#30363d]">
+            <tbody>
               {loading && filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center text-[#586069] dark:text-[#8b949e]">
-                    <FaSpinner className="animate-spin inline mr-2 text-[#0366d6]" /> Syncing files from Git...
+                  <td colSpan="5" className="py-24 text-center text-sm" style={{ color: 'var(--on-surface-variant)' }}>
+                    <FaSpinner className="animate-spin inline mr-2" style={{ color: 'var(--primary)' }} /> Loading files...
                   </td>
                 </tr>
               ) : filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-16 text-center text-[#586069] dark:text-[#8b949e]">
-                    <div className="flex flex-col items-center gap-2">
-                      <FaFolder size={36} className="text-[#0366d6] opacity-30" />
-                      <p className="font-semibold text-sm">No files found in this directory</p>
-                      <p className="text-xs">Drag and drop files to upload directly.</p>
+                  <td colSpan="5" className="py-24 text-center">
+                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                      <div 
+                        className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
+                        style={{ backgroundColor: 'var(--surface-variant)', border: '1px solid var(--outline-variant)' }}
+                      >
+                        <FaFolder size={28} style={{ color: 'var(--on-surface-variant)' }} />
+                      </div>
+                      <p className="text-sm font-medium mb-1" style={{ color: 'var(--on-surface)' }}>No files found</p>
+                      <p className="text-xs mb-6" style={{ color: 'var(--on-surface-variant)' }}>Upload your first file to get started.</p>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="h-10 px-6 text-xs font-medium transition-colors"
+                        style={{
+                          borderRadius: '20px',
+                          backgroundColor: 'var(--primary)',
+                          color: 'var(--on-primary)'
+                        }}
+                      >
+                        Upload your first file
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -336,91 +505,70 @@ const AllFiles = ({
                     <tr 
                       key={idx} 
                       onDoubleClick={() => handleDoubleClick(item)} 
-                      className={`hover:bg-[#f6f8fbb0] dark:hover:bg-[#21262d]/50 group cursor-pointer transition-colors duration-150 ${
-                        isSelected ? 'bg-[#f1f8ff] dark:bg-[#1f2937]/50' : ''
-                      }`}
+                      onClick={() => {
+                        setSelectedFiles(prev => prev.includes(item.path) ? prev.filter(p => p !== item.path) : [...prev, item.path]);
+                      }}
+                      className="group cursor-pointer select-none transition-colors"
+                      style={{
+                        height: '48px',
+                        borderBottom: '1px solid var(--outline-variant)',
+                        backgroundColor: isSelected ? 'var(--primary-container)' : 'transparent',
+                        borderLeft: isSelected ? '3px solid var(--primary)' : '3px solid transparent'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) e.currentTarget.style.backgroundColor = 'var(--surface-variant)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                      }}
                     >
-                      <td className="px-4 sm:px-6 py-3">
+                      {/* Checkbox column */}
+                      <td className="px-4 w-10">
                         <input 
-                          type="checkbox" 
-                          className="rounded border-[#e1e4e8] dark:border-[#30363d] transition-all" 
-                          checked={isSelected} 
+                          type="checkbox"
+                          checked={isSelected}
                           onChange={(e) => {
                             e.stopPropagation();
                             setSelectedFiles(prev => prev.includes(item.path) ? prev.filter(p => p !== item.path) : [...prev, item.path]);
-                          }} 
+                          }}
+                          className={`w-4 h-4 rounded cursor-pointer accent-[#1A73E8] ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
                         />
                       </td>
-                      <td className="px-2 py-3">
-                        {toggleStar && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); toggleStar(item.path); }}
-                            className={`p-1 rounded transition-colors ${isStarred ? 'text-amber-500' : 'text-[#959da5] dark:text-[#6e7681] opacity-0 group-hover:opacity-100'}`}
-                            title={isStarred ? 'Starred' : 'Star file'}
-                          >
-                            {isStarred ? <FaStar size={13} /> : <FaRegStar size={13} />}
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 min-w-0 max-w-xs">
-                        <div className="flex items-center gap-3 transition-transform duration-200 group-hover:translate-x-1 min-w-0">
-                          {getFileIcon(item.name, item.type)}
+
+                      {/* File Name + Icon */}
+                      <td className="px-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          {getFileIcon(item.name, item.type, 18)}
                           <span 
-                            className={item.type === 'dir' ? 'text-[#0366d6] dark:text-[#58a6ff] font-medium hover:underline break-all' : 'text-[#24292e] dark:text-white break-all truncate max-w-[140px] sm:max-w-[220px] md:max-w-[320px]'} 
+                            className="text-sm font-medium truncate max-w-sm sm:max-w-md" 
+                            style={{ color: isSelected ? 'var(--on-primary-container)' : 'var(--on-surface)' }}
                             title={item.name}
                           >
                             {item.name}
                           </span>
-                          {item.repoName && (
-                            <span className="hidden sm:inline-block text-[9px] bg-[#f0f3f6] dark:bg-[#21262d] text-[#586069] dark:text-[#8b949e] border border-[#e1e4e8] dark:border-[#30363d] px-1.5 py-0.5 rounded font-mono shrink-0">
-                              {item.repoName}
-                            </span>
-                          )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-xs text-[#586069] dark:text-[#8b949e] hidden md:table-cell whitespace-nowrap">
-                        {item.lastModified ? new Date(item.lastModified).toLocaleDateString() : '—'}
+
+                      {/* Last Modified Date (Monospace Caption) */}
+                      <td className="px-4 text-xs font-mono hidden md:table-cell" style={{ color: 'var(--on-surface-variant)' }}>
+                        {item.lastModified ? new Date(item.lastModified).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                       </td>
-                      <td className="px-4 py-3 text-right text-[#586069] dark:text-[#8b949e] text-xs font-medium whitespace-nowrap">
+
+                      {/* File Size (Monospace) */}
+                      <td className="px-4 text-right text-xs font-mono" style={{ color: 'var(--on-surface-variant)' }}>
                         {item.displaySize}
                       </td>
-                      <td className="px-4 sm:px-6 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {canEdit && onEditFile && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); onEditFile(item); }}
-                              className="p-1.5 hover:bg-[#e1e4e8] dark:hover:bg-[#21262d] rounded text-[#586069] dark:text-[#8b949e] hover:text-[#2ea44f] transition-colors"
-                              title="Edit in Editor"
-                            >
-                              <FaEdit size={12} className="text-[#2ea44f]" />
-                            </button>
-                          )}
-                          {item.type !== 'dir' && onOpenShare && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); onOpenShare(item); }}
-                              className="p-1.5 hover:bg-[#e1e4e8] dark:hover:bg-[#21262d] rounded text-[#586069] dark:text-[#8b949e] hover:text-[#0366d6] dark:hover:text-[#58a6ff] transition-colors opacity-0 group-hover:opacity-100"
-                              title="Share Link"
-                            >
-                              <FaShareAlt size={12} />
-                            </button>
-                          )}
-                          {item.type !== 'dir' && onOpenHistory && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); onOpenHistory(item); }}
-                              className="p-1.5 hover:bg-[#e1e4e8] dark:hover:bg-[#21262d] rounded text-[#586069] dark:text-[#8b949e] hover:text-[#0366d6] dark:hover:text-[#58a6ff] transition-colors opacity-0 group-hover:opacity-100"
-                              title="Commit History"
-                            >
-                              <FaHistory size={12} />
-                            </button>
-                          )}
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setDetailsFile(item); }}
-                            className="p-1.5 hover:bg-[#e1e4e8] dark:hover:bg-[#21262d] rounded-full text-[#586069] dark:text-[#8b949e] transition-colors"
-                            title="File details"
-                          >
-                            <FaEllipsisV size={13} />
-                          </button>
-                        </div>
+
+                      {/* Actions: Clean Google Drive style single 3-dots menu button */}
+                      <td className="w-12 px-4 text-right">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setDetailsFile(item); }}
+                          className="w-8 h-8 rounded-full inline-flex items-center justify-center hover:bg-black/5 active:bg-black/10 transition-colors cursor-pointer"
+                          style={{ color: 'var(--on-surface-variant)' }}
+                          title="More options"
+                        >
+                          <FaEllipsisV size={13} />
+                        </button>
                       </td>
                     </tr>
                   );

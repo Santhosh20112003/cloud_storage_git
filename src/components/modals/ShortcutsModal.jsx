@@ -13,38 +13,79 @@ const ShortcutsModal = ({ isOpen, onClose }) => {
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-[170] flex items-center justify-center p-4" onClick={onClose}>
+    <div 
+      className="fixed inset-0 z-[170] flex items-center justify-center p-4 animate-overlay-in" 
+      style={{ backgroundColor: 'var(--scrim)' }}
+      onClick={onClose}
+    >
       <div 
-        className="bg-white dark:bg-[#161b22] text-[#24292e] dark:text-[#c9d1d9] border border-[#e1e4e8] dark:border-[#30363d] rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200"
+        className="w-full max-w-md overflow-hidden elevation-dialog animate-modal-in"
+        style={{
+          backgroundColor: 'var(--surface)',
+          borderRadius: '12px',
+          border: '1px solid var(--outline-variant)',
+          color: 'var(--on-surface)'
+        }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-[#e1e4e8] dark:border-[#30363d] flex items-center justify-between bg-[#fafbfc] dark:bg-[#0d1117]">
+        <div 
+          className="h-14 px-6 flex items-center justify-between"
+          style={{
+            borderBottom: '1px solid var(--outline-variant)',
+            backgroundColor: 'var(--surface-variant)'
+          }}
+        >
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 bg-blue-50 dark:bg-blue-900/30 text-[#0366d6] dark:text-[#58a6ff] rounded-md">
-              <FaKeyboard size={14} />
-            </div>
-            <h3 className="font-semibold text-sm">Keyboard Shortcuts</h3>
+            <FaKeyboard size={14} style={{ color: 'var(--primary)' }} />
+            <h3 className="font-medium text-sm" style={{ color: 'var(--on-surface)' }}>
+              Keyboard shortcuts
+            </h3>
           </div>
-          <button onClick={onClose} className="p-1 text-[#586069] dark:text-[#8b949e] hover:bg-[#f3f4f6] dark:hover:bg-[#21262d] rounded">
-            <FaTimes size={15} />
+          <button 
+            onClick={onClose} 
+            className="p-1.5 rounded-full hover:bg-[#E8EAED] transition-colors"
+            style={{ color: 'var(--on-surface-variant)' }}
+          >
+            <FaTimes size={14} />
           </button>
         </div>
 
         <div className="p-5 space-y-3">
           {shortcuts.map((s, idx) => (
-            <div key={idx} className="flex items-center justify-between py-1.5 border-b border-[#e1e4e8]/50 dark:border-[#30363d]/50 last:border-0">
-              <span className="text-xs text-[#586069] dark:text-[#8b949e]">{s.desc}</span>
-              <kbd className="px-2 py-1 bg-[#f6f8fa] dark:bg-[#0d1117] border border-[#e1e4e8] dark:border-[#30363d] text-[#24292e] dark:text-white rounded-md text-[11px] font-mono font-semibold shadow-2xs">
+            <div 
+              key={idx} 
+              className="flex items-center justify-between py-2"
+              style={{ borderBottom: idx === shortcuts.length - 1 ? 'none' : '1px solid var(--outline-variant)' }}
+            >
+              <span className="text-xs" style={{ color: 'var(--on-surface-variant)' }}>{s.desc}</span>
+              <kbd 
+                className="px-2.5 py-1 text-xs font-mono font-medium rounded"
+                style={{
+                  backgroundColor: 'var(--surface-variant)',
+                  border: '1px solid var(--outline)',
+                  color: 'var(--on-surface)'
+                }}
+              >
                 {s.key}
               </kbd>
             </div>
           ))}
         </div>
 
-        <div className="px-6 py-3 border-t border-[#e1e4e8] dark:border-[#30363d] bg-[#fafbfc] dark:bg-[#0d1117] flex justify-end">
+        <div 
+          className="px-6 py-3.5 flex justify-end"
+          style={{
+            borderTop: '1px solid var(--outline-variant)',
+            backgroundColor: 'var(--surface-variant)'
+          }}
+        >
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-[#0366d6] text-white text-xs font-semibold rounded-lg hover:bg-[#0256b4] transition-colors"
+            className="h-9 px-5 text-xs font-medium rounded-full cursor-pointer hover:bg-white"
+            style={{
+              border: '1px solid var(--outline)',
+              color: 'var(--on-surface)'
+            }}
           >
             Got it
           </button>

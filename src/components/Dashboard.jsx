@@ -39,7 +39,7 @@ import FileHistoryModal from './modals/FileHistoryModal';
 import ShareModal from './modals/ShareModal';
 import ShortcutsModal from './modals/ShortcutsModal';
 import CodeEditorModal from './modals/CodeEditorModal';
-import { STORAGE_CONFIG, formatBytes, sanitizeFileName } from '../config/commonUtils';
+import { STORAGE_CONFIG, formatBytes, sanitizeFileName, isFileEditable } from '../config/commonUtils';
 import { prepareSmartFile, blobToBase64, decompressBlobLossless } from '../config/smartSlicer';
 
 const getFileIcon = (fileName, type) => {
@@ -228,20 +228,42 @@ const Dashboard = () => {
         e.preventDefault();
         fileInputRef.current?.click();
       }
-      // Close open modals on Escape
+      // Escape key behavior: Close modals or clear multi-selection
       if (e.key === 'Escape') {
-        setHistoryModalFile(null);
-        setShareModalFile(null);
-        setShortcutsModalOpen(false);
-        setPreviewFile(null);
-        setEditingFile(null);
-        setDetailsFile(null);
+        // If any modal/drawer is open, close them first
+        setHistoryModalFile(prev => {
+          if (prev) return null;
+          return prev;
+        });
+        setShareModalFile(prev => {
+          if (prev) return null;
+          return prev;
+        });
+        setShortcutsModalOpen(prev => {
+          if (prev) return false;
+          return prev;
+        });
+        setPreviewFile(prev => {
+          if (prev) return null;
+          return prev;
+        });
+        setEditingFile(prev => {
+          if (prev) return null;
+          return prev;
+        });
+        setDetailsFile(prev => {
+          if (prev) return null;
+          return prev;
+        });
+
+        // Always deselect all files on Escape
+        setSelectedFiles([]);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [setSelectedFiles]);
 
   const queryClient = useQueryClient();
 
@@ -1110,9 +1132,14 @@ const Dashboard = () => {
   const handleOpenEdit = async (file, preloadedContent = null) => {
     if (!file) return;
 
-    // Guard: Prevent huge / binary / chunked files from loading into text editor
+    // Guard: Prevent non-code / binary files (e.g. PDF, images, video, archives) from being edited in code editor
+    if (!isFileEditable(file)) {
+      return toast.error('Only text, code, markup, and config files can be edited in the Code Editor.');
+    }
+
+    // Guard: Prevent huge / chunked files from loading into text editor
     if (file.isChunked || file.size > 1024 * 500) {
-      return toast.error('This file is too large or binary to edit in the web code editor (Max 500KB text).');
+      return toast.error('This file is too large to edit in the web code editor (Max 500KB text).');
     }
 
     if (preloadedContent !== null && preloadedContent !== undefined && preloadedContent !== '') {
@@ -1368,19 +1395,37 @@ const Dashboard = () => {
 
   return (
     <div 
-      className={`flex flex-col md:flex-row bg-[#f6f8fa] dark:bg-[#0d1117] min-h-screen font-sans text-[#24292e] dark:text-[#c9d1d9] relative transition-colors duration-200 ${dragActive ? 'bg-blue-50/50 dark:bg-blue-950/20' : ''}`}
+      className="flex flex-col md:flex-row min-h-screen relative select-none"
+      style={{
+        backgroundColor: 'var(--surface)',
+        color: 'var(--on-surface)',
+        fontFamily: "'Inter', sans-serif"
+      }}
       onDragEnter={handleDrag}
       onDragOver={handleDrag}
       onDragLeave={handleDrag}
       onDrop={handleDrop}
     >
-      {/* Full-screen Drag Overlay */}
+      {/* Drag & drop: Dashed 2px --primary border overlay, --primary-container bg at 50% opacity, centered text 'Drop to upload' */}
       {dragActive && (
-        <div className="fixed inset-0 z-[200] bg-[#0366d6]/10 dark:bg-[#58a6ff]/10 backdrop-blur-xs border-4 border-dashed border-[#0366d6] dark:border-[#58a6ff] flex items-center justify-center pointer-events-none transition-all duration-300">
-          <div className="bg-white dark:bg-[#161b22] p-8 rounded-2xl shadow-2xl flex flex-col items-center gap-4 scale-105 animate-pulse border border-[#e1e4e8] dark:border-[#30363d]">
-            <FaUpload size={48} className="text-[#0366d6] dark:text-[#58a6ff]" />
-            <p className="text-xl font-bold text-[#0366d6] dark:text-[#58a6ff]">Drop files here to upload to GitHub</p>
-            <p className="text-xs text-[#586069] dark:text-[#8b949e]">Files will be automatically converted and committed to your repository</p>
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center pointer-events-none"
+          style={{
+            backgroundColor: 'rgba(210, 227, 252, 0.5)', // --primary-container at 50% opacity
+            border: '2px dashed var(--primary)'
+          }}
+        >
+          <div 
+            className="p-8 rounded-2xl flex flex-col items-center gap-3"
+            style={{
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--outline-variant)'
+            }}
+          >
+            <FaUpload size={32} style={{ color: 'var(--primary)' }} />
+            <p className="text-base font-medium" style={{ color: 'var(--on-surface)' }}>
+              Drop to upload
+            </p>
           </div>
         </div>
       )}
@@ -1395,69 +1440,81 @@ const Dashboard = () => {
         setIsOpen={setSidebarOpen}
         trashCount={trashItems.length}
         starredCount={starredPaths.length}
+        onUploadClick={() => fileInputRef.current?.click()}
+        onCreateFolderClick={handleCreateFolder}
       />
       
-      <main className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden min-w-0" style={{ backgroundColor: 'var(--surface)' }}>
         <Header 
           sidebarOpen={sidebarOpen} 
           setSidebarOpen={setSidebarOpen} 
           activeView={activeView} 
+          setActiveView={setActiveView}
           onOpenShortcuts={() => setShortcutsModalOpen(true)}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          allFiles={firestoreFiles}
+          onFileClick={(file) => handleDoubleClick(file)}
+          onNavigateFolder={(folderPath) => {
+            setCurrentPath(folderPath);
+            setActiveView('mystorage');
+          }}
+          usedStorage={formatBytes(totalSizeBytes)}
+          totalStorage={`${totalPoolCapacityGB} GB`}
+          percentage={percentage}
         />
         
-        <div className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-8">
+        {/* Content area: --surface bg, 24px padding */}
+        <div className="flex-1 overflow-y-auto p-6">
           {(!isGithubConnected || repoStatus !== 'ready') ? (
-            <div className="w-full max-w-2xl mx-auto mt-8 p-6 sm:p-10 bg-white dark:bg-[#161b22] border border-[#e1e4e8] dark:border-[#30363d] rounded-2xl shadow-sm text-center">
-              <div className="w-16 h-16 bg-[#f6f8fa] dark:bg-[#21262d] border border-[#e1e4e8] dark:border-[#30363d] rounded-2xl flex items-center justify-center text-[#586069] dark:text-[#8b949e] mx-auto mb-6">
-                {loading ? <FaSpinner className="animate-spin text-[#0366d6]" /> : <FaDatabase size={24} />}
+            <div 
+              className="w-full max-w-xl mx-auto mt-12 p-8 text-center"
+              style={{
+                backgroundColor: 'var(--surface)',
+                border: '1px solid var(--outline-variant)',
+                borderRadius: '12px'
+              }}
+            >
+              <div 
+                className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+                style={{ backgroundColor: 'var(--surface-variant)', border: '1px solid var(--outline-variant)' }}
+              >
+                {loading ? <FaSpinner className="animate-spin" style={{ color: 'var(--primary)' }} /> : <FaDatabase size={20} style={{ color: 'var(--primary)' }} />}
               </div>
-              <h3 className="text-xl font-bold mb-2 text-[#24292e] dark:text-white">Configure GitHub Backend</h3>
-              <p className="text-[#586069] dark:text-[#8b949e] text-sm mb-8">Link your GitHub account to enable unlimited personal cloud storage backed by Git versioning.</p>
+              <h3 className="text-lg font-medium mb-1" style={{ color: 'var(--on-surface)' }}>Connect GitHub Storage</h3>
+              <p className="text-xs mb-6" style={{ color: 'var(--on-surface-variant)' }}>
+                Authenticate to activate your free personal cloud storage pool backed by Git.
+              </p>
               <button 
-                className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#2ea44f] text-white text-sm font-semibold rounded-lg hover:bg-[#2c974b] transition-colors shadow-xs"
+                className="h-10 px-6 text-xs font-medium transition-colors cursor-pointer"
+                style={{
+                  borderRadius: '20px',
+                  backgroundColor: 'var(--primary)',
+                  color: 'var(--on-primary)'
+                }}
                 onClick={connectGithubAccount}
               >
-                <FaShieldAlt /> {loading ? 'Connecting...' : 'Connect GitHub Account'}
+                {loading ? 'Connecting...' : 'Connect GitHub'}
               </button>
             </div>
           ) : (
             <div className="w-full max-w-6xl mx-auto">
               {activeView === 'dashboard' && (
-                <div className="space-y-6">
-                  <Overview 
-                    totalSizeBytes={totalSizeBytes} 
-                    percentage={percentage} 
-                    firestoreFiles={firestoreFiles}
-                  />
-                  <AllFiles 
-                    currentPath={currentPath}
-                    setCurrentPath={setCurrentPath}
-                    selectedFiles={selectedFiles}
-                    setSelectedFiles={setSelectedFiles}
-                    handleDelete={handleDelete}
-                    handleCreateFolder={handleCreateFolder}
-                    fileInputRef={fileInputRef}
-                    searchQuery={searchQuery}
-                    setSearchQuery={setSearchQuery}
-                    filterType={filterType}
-                    setFilterType={setFilterType}
-                    sortBy={sortBy}
-                    setSortBy={setSortBy}
-                    loading={loading}
-                    filteredItems={filteredItems}
-                    handleDoubleClick={handleDoubleClick}
-                    getFileIcon={getFileIcon}
-                    setDetailsFile={setDetailsFile}
-                    activeView={activeView}
-                    viewMode={viewMode}
-                    setViewMode={setViewMode}
-                    onOpenHistory={(file) => setHistoryModalFile(file)}
-                    onOpenShare={(file) => setShareModalFile(file)}
-                    onEditFile={(file) => handleOpenEdit(file)}
-                    starredPaths={starredPaths}
-                    toggleStar={toggleStar}
-                  />
-                </div>
+                <Overview 
+                  firestoreFiles={firestoreFiles}
+                  selectedFiles={selectedFiles}
+                  setSelectedFiles={setSelectedFiles}
+                  onFolderClick={(folderPath) => {
+                    setCurrentPath(folderPath);
+                    setActiveView('mystorage');
+                  }}
+                  onFileClick={(file) => handleDoubleClick(file)}
+                  onDetailsClick={(file) => setDetailsFile(file)}
+                  onShareClick={(file) => setShareModalFile(file)}
+                  onDownloadClick={(file) => handleDownload(file)}
+                  onEditClick={(file) => handleOpenEdit(file)}
+                  onDeleteClick={(paths) => handleDelete(paths)}
+                />
               )}
 
               {(activeView === 'mystorage' || activeView === 'starred') && (
@@ -1520,56 +1577,104 @@ const Dashboard = () => {
 
       <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileChange} />
       
-      {/* Upload Preview & Progress Queue */}
+      {/* Upload Preview & Progress Queue: 12px radius, 6dp elevation */}
       {uploadQueue.length > 0 && (
-        <div className="fixed bottom-3 right-3 w-[95vw] max-w-sm sm:max-w-md bg-white dark:bg-[#161b22] border border-[#e1e4e8] dark:border-[#30363d] rounded-xl shadow-2xl z-[150] overflow-hidden flex flex-col text-[#24292e] dark:text-[#c9d1d9] animate-in slide-in-from-bottom duration-200">
-          <div className="px-4 py-3 bg-[#fafbfc] dark:bg-[#0d1117] border-b border-[#e1e4e8] dark:border-[#30363d] flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-[#586069] dark:text-[#8b949e]">Upload Queue ({uploadQueue.length})</span>
-            <button onClick={() => setUploadQueue([])} className="text-[#586069] dark:text-[#8b949e] hover:text-[#d73a49] p-1">
+        <div 
+          className="fixed bottom-4 right-4 w-[95vw] max-w-sm sm:max-w-md elevation-dialog overflow-hidden flex flex-col z-[150]"
+          style={{
+            backgroundColor: 'var(--surface)',
+            border: '1px solid var(--outline-variant)',
+            borderRadius: '12px',
+            color: 'var(--on-surface)'
+          }}
+        >
+          <div 
+            className="px-4 py-3 flex items-center justify-between"
+            style={{
+              backgroundColor: 'var(--surface-variant)',
+              borderBottom: '1px solid var(--outline-variant)'
+            }}
+          >
+            <span className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--on-surface-variant)' }}>
+              Uploads ({uploadQueue.length})
+            </span>
+            <button 
+              onClick={() => setUploadQueue([])} 
+              className="p-1 rounded hover:bg-[#E8EAED] transition-colors"
+              style={{ color: 'var(--on-surface-variant)' }}
+            >
               <FaTimes size={12} />
             </button>
           </div>
-          <div className="max-h-60 overflow-y-auto p-2.5 space-y-2">
+
+          <div className="max-h-60 overflow-y-auto p-3 space-y-2">
             {uploadQueue.map(item => (
-              <div key={item.id} className="flex items-center gap-3 p-2.5 bg-[#f6f8fa] dark:bg-[#0d1117] border border-[#e1e4e8] dark:border-[#30363d] rounded-lg">
-                {item.preview ? (
-                  <img src={item.preview} className="w-9 h-9 object-cover rounded shadow-xs border border-[#e1e4e8] dark:border-[#30363d]" alt={item.name} />
-                ) : (
-                  <div className="w-9 h-9 bg-white dark:bg-[#21262d] border border-[#e1e4e8] dark:border-[#30363d] rounded flex items-center justify-center text-[#959da5]">
-                    <FaFileAlt size={16} />
-                  </div>
-                )}
+              <div 
+                key={item.id} 
+                className="flex items-center gap-3 p-2.5 rounded-lg"
+                style={{
+                  backgroundColor: 'var(--surface)',
+                  border: '1px solid var(--outline-variant)'
+                }}
+              >
+                <div 
+                  className="w-8 h-8 rounded flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: 'var(--surface-variant)', border: '1px solid var(--outline-variant)' }}
+                >
+                  <FaFileAlt size={14} style={{ color: 'var(--primary)' }} />
+                </div>
+
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold truncate text-[#24292e] dark:text-white">{item.name}</p>
-                  <div className="w-full bg-[#e1e4e8] dark:bg-[#30363d] h-1.5 rounded-full mt-1.5 overflow-hidden">
+                  <p className="text-xs font-medium truncate" style={{ color: 'var(--on-surface)' }}>{item.name}</p>
+                  <div className="w-full mt-1.5 overflow-hidden" style={{ backgroundColor: 'var(--outline-variant)', height: '4px', borderRadius: '2px' }}>
                     <div 
-                      className={`h-full transition-all duration-300 ${item.status === 'error' ? 'bg-[#d73a49]' : item.status === 'completed' ? 'bg-[#2ea44f]' : 'bg-[#0366d6]'}`}
-                      style={{ width: `${item.status === 'completed' ? 100 : item.status === 'uploading' ? (item.progress || 60) : 10}%` }}
+                      className="h-full transition-all duration-300"
+                      style={{ 
+                        width: `${item.status === 'completed' ? 100 : item.status === 'uploading' ? (item.progress || 60) : 10}%`,
+                        backgroundColor: item.status === 'error' ? 'var(--error)' : item.status === 'completed' ? 'var(--success)' : 'var(--primary)',
+                        borderRadius: '2px'
+                      }}
                     />
                   </div>
                 </div>
-                <div className="text-[11px] font-bold">
-                  {item.status === 'pending' && <span className="text-[#0366d6] dark:text-[#58a6ff]">WAIT</span>}
-                  {item.status === 'uploading' && <FaSpinner className="animate-spin text-[#0366d6]" />}
-                  {item.status === 'completed' && <FaCheck className="text-[#2ea44f]" />}
-                  {item.status === 'error' && <FaTimes className="text-[#d73a49]" />}
+
+                <div className="text-[11px] font-mono shrink-0">
+                  {item.status === 'pending' && <span style={{ color: 'var(--on-surface-variant)' }}>Wait</span>}
+                  {item.status === 'uploading' && <FaSpinner className="animate-spin" style={{ color: 'var(--primary)' }} />}
+                  {item.status === 'completed' && <FaCheck style={{ color: 'var(--success)' }} />}
+                  {item.status === 'error' && <FaTimes style={{ color: 'var(--error)' }} />}
                 </div>
               </div>
             ))}
           </div>
-          <div className="p-3 border-t border-[#e1e4e8] dark:border-[#30363d] bg-[#fafbfc] dark:bg-[#0d1117] flex items-center gap-2">
+
+          <div 
+            className="p-3 flex items-center gap-2"
+            style={{
+              backgroundColor: 'var(--surface-variant)',
+              borderTop: '1px solid var(--outline-variant)'
+            }}
+          >
             <button 
               onClick={startUploads}
               disabled={uploadQueue.every(u => u.status !== 'pending' && u.status !== 'error')}
-              className="flex-1 py-2 bg-[#2ea44f] hover:bg-[#2c974b] text-white text-xs font-bold rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              className="flex-1 h-9 px-4 text-xs font-medium rounded-full flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+              style={{
+                backgroundColor: 'var(--primary)',
+                color: 'var(--on-primary)'
+              }}
             >
-              <FaUpload /> {uploadQueue.some(u => u.status === 'error') ? 'Retry Failed Uploads' : 'Commit & Upload to Drive'}
+              <FaUpload size={11} /> {uploadQueue.some(u => u.status === 'error') ? 'Retry failed' : 'Commit & upload'}
             </button>
+
             {uploadQueue.some(u => u.status === 'completed' || u.status === 'error') && (
               <button
                 onClick={() => setUploadQueue(prev => prev.filter(u => u.status === 'pending' || u.status === 'uploading'))}
-                className="px-3 py-2 bg-[#f6f8fa] dark:bg-[#21262d] text-[#586069] dark:text-[#8b949e] hover:text-[#d73a49] text-xs font-medium rounded-lg border border-[#e1e4e8] dark:border-[#30363d] transition-colors"
-                title="Clear finished/failed"
+                className="h-9 px-4 text-xs font-medium rounded-full cursor-pointer hover:bg-white transition-colors"
+                style={{
+                  border: '1px solid var(--outline)',
+                  color: 'var(--on-surface-variant)'
+                }}
               >
                 Clear
               </button>
@@ -1625,115 +1730,205 @@ const Dashboard = () => {
         />
       )}
 
-      {/* File Details Side Drawer */}
+      {/* File Details Side Drawer: Scrim overlay + Flat 2.0 side panel */}
       {detailsFile && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-2xs z-[110] flex justify-end items-end sm:items-stretch" onClick={() => setDetailsFile(null)}>
-          <div className="bg-white dark:bg-[#161b22] w-full sm:max-w-md h-[90vh] sm:h-full shadow-2xl flex flex-col border-l border-[#e1e4e8] dark:border-[#30363d] text-[#24292e] dark:text-[#c9d1d9] animate-in slide-in-from-right duration-300" onClick={e => e.stopPropagation()}>
-            <div className="p-4 sm:p-6 border-b border-[#e1e4e8] dark:border-[#30363d] flex items-center justify-between bg-[#fafbfc] dark:bg-[#0d1117]">
-              <h3 className="font-bold text-sm text-[#24292e] dark:text-white">File Details</h3>
-              <button onClick={() => setDetailsFile(null)} className="p-2 hover:bg-[#f3f4f6] dark:hover:bg-[#21262d] rounded-lg transition-colors">
-                <FaTimes className="text-[#586069] dark:text-[#8b949e]" />
+        <div 
+          className="fixed inset-0 z-[110] flex justify-end animate-overlay-in"
+          style={{ backgroundColor: 'var(--scrim)' }}
+          onClick={() => setDetailsFile(null)}
+        >
+          <div 
+            className="w-full sm:max-w-md h-full flex flex-col animate-drawer-right"
+            style={{
+              backgroundColor: 'var(--surface)',
+              borderLeft: '1px solid var(--outline-variant)',
+              color: 'var(--on-surface)'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header: Google Drive style with clean title & close */}
+            <div 
+              className="h-14 px-6 flex items-center justify-between"
+              style={{
+                backgroundColor: 'var(--surface)',
+                borderBottom: '1px solid var(--outline-variant)'
+              }}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-medium truncate" style={{ color: 'var(--on-surface)' }}>
+                  {detailsFile.name}
+                </span>
+              </div>
+              <button 
+                onClick={() => setDetailsFile(null)} 
+                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-black/5 transition-colors cursor-pointer"
+                style={{ color: 'var(--on-surface-variant)' }}
+                title="Close"
+              >
+                <FaTimes size={13} />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-20 h-20 bg-[#f6f8fa] dark:bg-[#0d1117] border border-[#e1e4e8] dark:border-[#30363d] rounded-2xl flex items-center justify-center text-[#0366d6] dark:text-[#58a6ff] mb-4 shadow-xs mx-auto">
-                  {detailsFile.type === 'dir' ? <FaFolder size={40} /> : <FaFileAlt size={40} className="text-[#959da5]" />}
+
+            {/* Content Body: Details tab */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* File Preview Card Hero */}
+              <div 
+                className="w-full h-40 rounded-2xl flex flex-col items-center justify-center p-4 transition-all"
+                style={{
+                  backgroundColor: 'var(--surface-variant)',
+                  border: '1px solid var(--outline-variant)'
+                }}
+              >
+                <div className="mb-2">
+                  {getFileIcon(detailsFile.name, detailsFile.type, 44)}
                 </div>
-                <h4 className="text-base font-bold text-[#24292e] dark:text-white break-all truncate max-w-full" title={detailsFile.name}>{detailsFile.name}</h4>
-                <p className="text-xs text-[#586069] dark:text-[#8b949e] mt-1">{detailsFile.type === 'dir' ? 'Folder' : 'File Asset'}</p>
+                <span className="text-xs font-mono px-2 py-0.5 rounded bg-white/80 border border-[#DADCE0]" style={{ color: 'var(--on-surface-variant)' }}>
+                  {detailsFile.type === 'dir' ? 'Directory' : (detailsFile.name.split('.').pop()?.toUpperCase() || 'FILE')}
+                </span>
               </div>
 
-              {/* Meta details */}
-              <div>
-                <h5 className="text-[10px] uppercase font-bold text-[#586069] dark:text-[#8b949e] tracking-widest mb-2 px-1">Attributes</h5>
-                <div className="bg-[#f6f8fa] dark:bg-[#0d1117] border border-[#e1e4e8] dark:border-[#30363d] rounded-xl overflow-hidden divide-y divide-[#e1e4e8] dark:divide-[#30363d]">
-                  <div className="flex justify-between px-4 py-2.5 text-xs">
-                    <span className="text-[#586069] dark:text-[#8b949e]">Size</span>
-                    <span className="font-semibold">{detailsFile.displaySize}</span>
-                  </div>
-                  <div className="flex justify-between px-4 py-2.5 text-xs">
-                    <span className="text-[#586069] dark:text-[#8b949e]">Extension</span>
-                    <span className="font-semibold uppercase text-[10px] bg-[#e1e4e8] dark:bg-[#30363d] px-2 py-0.5 rounded">{detailsFile.name.split('.').pop() || 'N/A'}</span>
-                  </div>
-                  <div className="flex justify-between px-4 py-2.5 text-xs">
-                    <span className="text-[#586069] dark:text-[#8b949e]">Git SHA</span>
-                    <span className="font-mono text-[10px] text-[#0366d6] dark:text-[#58a6ff] truncate ml-4 max-w-[140px]" title={detailsFile.sha}>
-                      {detailsFile.sha}
+              {/* Primary Quick Actions Bar (Compact & Sleek) */}
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => handleDownload(detailsFile)}
+                  disabled={detailsFile.type === 'dir'}
+                  className="h-9 px-2 text-xs font-medium rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 hover:bg-[#F8F9FA]"
+                  style={{
+                    backgroundColor: 'var(--surface)',
+                    border: '1px solid var(--outline)',
+                    color: 'var(--primary)'
+                  }}
+                  title="Download"
+                >
+                  <FaDownload size={11} /> Download
+                </button>
+
+                <button
+                  onClick={() => { setShareModalFile(detailsFile); setDetailsFile(null); }}
+                  className="h-9 px-2 text-xs font-medium rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer hover:bg-[#F8F9FA]"
+                  style={{
+                    backgroundColor: 'var(--surface)',
+                    border: '1px solid var(--outline)',
+                    color: 'var(--on-surface)'
+                  }}
+                  title="Share link"
+                >
+                  <FaShareAlt size={11} /> Share
+                </button>
+
+                <button
+                  onClick={() => { setHistoryModalFile(detailsFile); setDetailsFile(null); }}
+                  className="h-9 px-2 text-xs font-medium rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer hover:bg-[#F8F9FA]"
+                  style={{
+                    backgroundColor: 'var(--surface)',
+                    border: '1px solid var(--outline)',
+                    color: 'var(--on-surface)'
+                  }}
+                  title="Version history"
+                >
+                  <FaHistory size={11} /> History
+                </button>
+              </div>
+
+              {/* File Properties Table (Google Drive Clean Flat List) */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-semibold tracking-wider uppercase" style={{ color: 'var(--on-surface-variant)' }}>
+                  File details
+                </h4>
+
+                <div 
+                  className="rounded-2xl divide-y overflow-hidden"
+                  style={{
+                    backgroundColor: 'var(--surface)',
+                    border: '1px solid var(--outline-variant)',
+                    borderColor: 'var(--outline-variant)'
+                  }}
+                >
+                  <div className="flex items-center justify-between px-4 py-3 text-xs">
+                    <span style={{ color: 'var(--on-surface-variant)' }}>Type</span>
+                    <span className="font-medium" style={{ color: 'var(--on-surface)' }}>
+                      {detailsFile.type === 'dir' ? 'Folder' : `${(detailsFile.name.split('.').pop() || 'file').toUpperCase()} File`}
                     </span>
                   </div>
-                  <div className="flex justify-between px-4 py-2.5 text-xs">
-                    <span className="text-[#586069] dark:text-[#8b949e]">Modified</span>
-                    <span className="font-semibold">{detailsFile.lastModified ? new Date(detailsFile.lastModified).toLocaleString() : 'Just now'}</span>
+
+                  <div className="flex items-center justify-between px-4 py-3 text-xs">
+                    <span style={{ color: 'var(--on-surface-variant)' }}>Size</span>
+                    <span className="font-mono font-medium" style={{ color: 'var(--on-surface)' }}>
+                      {detailsFile.displaySize || '—'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between px-4 py-3 text-xs">
+                    <span style={{ color: 'var(--on-surface-variant)' }}>Storage location</span>
+                    <span className="font-mono text-[11px] truncate ml-3 max-w-[180px]" style={{ color: 'var(--on-surface)' }} title={detailsFile.path}>
+                      {detailsFile.path}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between px-4 py-3 text-xs">
+                    <span style={{ color: 'var(--on-surface-variant)' }}>Git commit SHA</span>
+                    <span className="font-mono text-[11px] px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--surface-variant)', color: 'var(--primary)', border: '1px solid var(--outline-variant)' }} title={detailsFile.sha}>
+                      {detailsFile.sha ? detailsFile.sha.substring(0, 7) : 'head'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between px-4 py-3 text-xs">
+                    <span style={{ color: 'var(--on-surface-variant)' }}>Last modified</span>
+                    <span className="font-mono" style={{ color: 'var(--on-surface)' }}>
+                      {detailsFile.lastModified ? new Date(detailsFile.lastModified).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Location */}
-              <div>
-                <h5 className="text-[10px] uppercase font-bold text-[#586069] dark:text-[#8b949e] tracking-widest mb-2 px-1">Storage Path</h5>
-                <div className="bg-[#f6f8fa] dark:bg-[#0d1117] border border-[#e1e4e8] dark:border-[#30363d] rounded-xl p-3">
-                  <p className="text-xs font-mono text-[#586069] dark:text-[#8b949e] break-all leading-relaxed" title={detailsFile.path}>
-                    {detailsFile.path}
-                  </p>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-2 space-y-2.5">
-                {detailsFile.type !== 'dir' && (
+              {/* Secondary Actions (Rename, Edit in Code, Move to Trash) */}
+              <div className="space-y-2 pt-1">
+                {isFileEditable(detailsFile) && (
                   <button 
                     onClick={() => {
                       const toEdit = detailsFile;
                       setDetailsFile(null);
                       handleOpenEdit(toEdit);
                     }}
-                    className="w-full py-2 bg-[#2ea44f] hover:bg-[#2c974b] text-white text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-2 shadow-xs"
+                    className="w-full h-9 px-4 text-xs font-medium rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer hover:bg-[#F8F9FA]"
+                    style={{
+                      backgroundColor: 'var(--surface)',
+                      border: '1px solid var(--outline)',
+                      color: 'var(--on-surface)'
+                    }}
                   >
-                    <FaEdit size={13} /> Edit in Code Editor
+                    <FaEdit size={12} /> Edit in Code Editor
                   </button>
                 )}
-                <button 
-                  onClick={() => { setShareModalFile(detailsFile); setDetailsFile(null); }}
-                  className="w-full py-2 bg-[#0366d6] text-white text-xs font-semibold rounded-lg hover:bg-[#0256b4] transition-all flex items-center justify-center gap-2"
-                >
-                  <FaShareAlt size={13} /> Share Link & CDN
-                </button>
-                <button 
-                  onClick={() => { setHistoryModalFile(detailsFile); setDetailsFile(null); }}
-                  className="w-full py-2 bg-white dark:bg-[#21262d] border border-[#e1e4e8] dark:border-[#30363d] text-[#24292e] dark:text-white text-xs font-semibold rounded-lg hover:border-[#0366d6] transition-all flex items-center justify-center gap-2"
-                >
-                  <FaHistory size={13} /> Version & Commit History
-                </button>
-                <button 
-                  onClick={() => { handleDownload(detailsFile); }}
-                  disabled={detailsFile.type === 'dir'}
-                  className="w-full py-2 bg-white dark:bg-[#21262d] border border-[#e1e4e8] dark:border-[#30363d] text-[#24292e] dark:text-white text-xs font-semibold rounded-lg hover:bg-[#f6f8fa] dark:hover:bg-[#30363d] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <FaDownload size={13} /> Download File
-                </button>
+
                 <button 
                   onClick={() => { handleRename(detailsFile); setDetailsFile(null); }}
-                  className="w-full py-2 bg-white dark:bg-[#21262d] border border-[#e1e4e8] dark:border-[#30363d] text-[#24292e] dark:text-white text-xs font-semibold rounded-lg hover:bg-[#f6f8fa] dark:hover:bg-[#30363d] transition-all flex items-center justify-center gap-2"
+                  className="w-full h-9 px-4 text-xs font-medium rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer hover:bg-[#F8F9FA]"
+                  style={{
+                    backgroundColor: 'var(--surface)',
+                    border: '1px solid var(--outline)',
+                    color: 'var(--on-surface)'
+                  }}
                 >
-                  <FaEdit size={13} /> Rename Item
+                  <FaEdit size={12} /> Rename file
                 </button>
+
                 <button 
                   onClick={() => {
                     const toDelete = detailsFile;
                     setDetailsFile(null);
                     handleDelete([toDelete.path]);
                   }}
-                  className="w-full py-2 bg-white dark:bg-[#21262d] border border-[#d73a49] text-[#d73a49] text-xs font-semibold rounded-lg hover:bg-[#feeef0] dark:hover:bg-red-950/30 transition-all flex items-center justify-center gap-2"
+                  className="w-full h-9 px-4 text-xs font-medium rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer hover:bg-[#FCE8E6]"
+                  style={{
+                    backgroundColor: 'var(--surface)',
+                    border: '1px solid #FAD2CF',
+                    color: 'var(--error)'
+                  }}
                 >
-                  <FaTrash size={13} /> Move to Trash
+                  <FaTrash size={11} /> Move to Trash
                 </button>
               </div>
-            </div>
-            <div className="p-4 bg-[#fafbfc] dark:bg-[#0d1117] border-t border-[#e1e4e8] dark:border-[#30363d]">
-              <p className="text-[10px] text-[#586069] dark:text-[#8b949e] text-center italic">
-                Synchronized with Git repository
-              </p>
             </div>
           </div>
         </div>
