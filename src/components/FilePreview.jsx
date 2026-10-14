@@ -1,16 +1,18 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   FaTimes, FaFilePdf, FaFileVideo, FaFileWord, FaDownload,
   FaExternalLinkAlt, FaFolder, FaFileAlt, FaExpand, FaCompress,
   FaCopy, FaCheck, FaSearchPlus, FaSearchMinus, FaSync,
   FaVolumeUp, FaVolumeMute, FaPlay, FaPause, FaStepBackward,
   FaStepForward, FaMusic, FaCode, FaImage, FaFileCsv,
-  FaFileArchive, FaLock, FaDatabase, FaFont, FaBook
+  FaFileArchive, FaLock, FaDatabase, FaFont, FaBook, FaEdit
 } from 'react-icons/fa';
 import { MdFullscreen, MdFullscreenExit } from 'react-icons/md';
 import Editor from '@monaco-editor/react';
 import JSZip from 'jszip';
 import axios from 'axios';
+import { decompressBlobLossless } from '../config/smartSlicer';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -539,7 +541,7 @@ const TYPE_ICONS = {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-const FilePreview = ({ file, githubToken, githubUsername, repository, onClose, onDownload }) => {
+const FilePreview = ({ file, githubToken, githubUsername, repository, onClose, onDownload, onEdit }) => {
   const [state, setState] = useState({ loading:true, error:null, mediaType:null });
   const [dataUrl, setDataUrl] = useState(null);
   const [fileContent, setFileContent] = useState('');
@@ -552,55 +554,144 @@ const FilePreview = ({ file, githubToken, githubUsername, repository, onClose, o
   const mediaType = EXT_TO_TYPE[fileExt] ?? 'unknown';
   const isCSV = fileExt === 'csv' || fileExt === 'tsv';
   const isMarkdown = fileExt === 'md';
+  const isEditable = mediaType === 'code' || mediaType === 'text' || ['json','env','xml','yml','yaml','ini','conf','properties','log','md','txt','csv','tsv','svg'].includes(fileExt);
 
   const apiHeaders = { Authorization:`Bearer ${githubToken}`, Accept:'application/vnd.github.raw' };
   const apiBase = `https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(file.path)}`;
 
-  useEffect(() => {
-    (async () => {
-      try {
-        if (mediaType === 'image' || mediaType === 'pdf') {
-          const res = await axios.get(apiBase, { headers:apiHeaders, responseType:'blob' });
-          const blob = new Blob([res.data], { type: mediaType === 'pdf' ? 'application/pdf' : res.data.type });
-          setDataUrl(URL.createObjectURL(blob));
-        } else if (mediaType === 'code' || mediaType === 'text') {
-          if (isCSV) {
-            const res = await axios.get(apiBase, { headers:apiHeaders, responseType:'text' });
-            const delimiter = fileExt === 'tsv' ? '\t' : ',';
-            setCsvData(res.data.trim().split('\n').map(l => l.split(delimiter)));
-          } else {
-            // Try GitHub API for content, fallback to raw if needed
-            try {
-              const res = await axios.get(apiBase, { headers:{ Authorization:`Bearer ${githubToken}`, Accept:'application/vnd.github+json' }});
-              setFileContent(decodeURIComponent(escape(window.atob(res.data.content))));
-            } catch (e) {
-              // fallback to raw
-              try {
-                const res = await axios.get(apiBase, { headers:apiHeaders, responseType:'text' });
-                setFileContent(res.data);
-              } catch (e2) {
-                setState({ loading:false, error:'Failed to load preview', mediaType });
-                return;
-              }
+  // TanStack useQuery for preview data fetching with caching and automatic retry
+  const { data: previewData, isLoading, error: queryError } = useQuery({
+    queryKey: ['file-preview', repository, file.path, file.sha],
+    queryFn: async () => {
+      let rawBlob;
+
+      // Handle chunked files (either via metadata or auto-detected manifest JSON)
+      let chunkPaths = file.isChunked && Array.isArray(file.chunkPaths) ? file.chunkPaths : null;
+      let isCompressed = file.isCompressed;
+      let effectiveMime = file.mimeType;
+
+      if (!chunkPaths) {
+        // Check if GitHub content is a smart_slicer_manifest descriptor
+        try {
+          const checkRes = await axios.get(apiBase, { 
+            headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github.raw' }, 
+            responseType: 'text' 
+          });
+          if (typeof checkRes.data === 'string' && checkRes.data.includes('smart_slicer_manifest')) {
+            const parsedManifest = JSON.parse(checkRes.data);
+            if (Array.isArray(parsedManifest.chunkPaths) && parsedManifest.chunkPaths.length > 0) {
+              chunkPaths = parsedManifest.chunkPaths;
+              isCompressed = Boolean(parsedManifest.isCompressed);
+              effectiveMime = parsedManifest.mimeType || effectiveMime;
             }
           }
-        } else if (fileExt === 'zip') {
-          const res = await axios.get(apiBase, { headers:apiHeaders, responseType:'arraybuffer' });
-          const zip = await JSZip.loadAsync(res.data);
-          const entries = [];
-          zip.forEach((path, entry) => entries.push({ name:path, dir:entry.dir, size:entry._data?.uncompressedSize||0 }));
-          setZipContents(entries.sort((a,b) => (b.dir - a.dir) || a.name.localeCompare(b.name)));
-        } else {
-          setDataUrl(file.download_url);
+        } catch (e) {
+          // Not a JSON manifest or fetch failed, proceed with raw fetch
         }
-        setState({ loading:false, error:null, mediaType });
-      } catch (err) {
-        setState({ loading:false, error:'Failed to load preview', mediaType });
       }
-    })();
 
-    return () => { if (dataUrl?.startsWith('blob:')) URL.revokeObjectURL(dataUrl); };
-  }, [file]);
+      if (chunkPaths && chunkPaths.length > 0) {
+        const chunkBlobs = await Promise.all(
+          chunkPaths.map(async (cPath) => {
+            const res = await axios.get(
+              `https://api.github.com/repos/${githubUsername}/${repository}/contents/${encodeURIComponent(cPath)}`,
+              { headers: apiHeaders, responseType: 'blob' }
+            );
+            return res.data;
+          })
+        );
+        rawBlob = new Blob(chunkBlobs, { type: effectiveMime || (mediaType === 'pdf' ? 'application/pdf' : 'application/octet-stream') });
+      }
+
+      // If compressed, decompress losslessly
+      if (isCompressed) {
+        if (!rawBlob) {
+          const res = await axios.get(apiBase, { headers: apiHeaders, responseType: 'blob' });
+          rawBlob = res.data;
+        }
+        rawBlob = await decompressBlobLossless(rawBlob);
+      }
+
+      if (mediaType === 'image' || mediaType === 'pdf') {
+        if (!rawBlob) {
+          const res = await axios.get(apiBase, { headers: apiHeaders, responseType: 'blob' });
+          rawBlob = new Blob([res.data], { type: mediaType === 'pdf' ? 'application/pdf' : res.data.type });
+        }
+        return { type: 'blob', blob: rawBlob };
+      } else if (mediaType === 'code' || mediaType === 'text') {
+        if (rawBlob) {
+          const text = await rawBlob.text();
+          if (isCSV) {
+            const delimiter = fileExt === 'tsv' ? '\t' : ',';
+            const parsed = text.trim().split('\n').map(l => l.split(delimiter));
+            return { type: 'csv', parsed };
+          }
+          return { type: 'text', content: text };
+        }
+
+        if (isCSV) {
+          const res = await axios.get(apiBase, { headers: apiHeaders, responseType: 'text' });
+          const delimiter = fileExt === 'tsv' ? '\t' : ',';
+          const parsed = res.data.trim().split('\n').map(l => l.split(delimiter));
+          return { type: 'csv', parsed };
+        } else {
+          try {
+            const res = await axios.get(apiBase, { headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json' } });
+            const content = decodeURIComponent(escape(window.atob(res.data.content)));
+            return { type: 'text', content };
+          } catch (e) {
+            const res = await axios.get(apiBase, { headers: apiHeaders, responseType: 'text' });
+            return { type: 'text', content: res.data };
+          }
+        }
+      } else if (fileExt === 'zip') {
+        const buffer = rawBlob ? await rawBlob.arrayBuffer() : (await axios.get(apiBase, { headers: apiHeaders, responseType: 'arraybuffer' })).data;
+        const zip = await JSZip.loadAsync(buffer);
+        const entries = [];
+        zip.forEach((path, entry) => entries.push({ name: path, dir: entry.dir, size: entry._data?.uncompressedSize || 0 }));
+        return { type: 'zip', entries: entries.sort((a,b) => (b.dir - a.dir) || a.name.localeCompare(b.name)) };
+      } else {
+        if (rawBlob) {
+          return { type: 'blob', blob: rawBlob };
+        }
+        return { type: 'direct', url: file.download_url };
+      }
+    },
+    enabled: Boolean(file && githubToken && repository),
+    staleTime: 1000 * 60 * 5, // 5 minutes cache
+    retry: 2
+  });
+
+  useEffect(() => {
+    if (!previewData) return;
+
+    if (previewData.type === 'blob') {
+      const url = URL.createObjectURL(previewData.blob);
+      setDataUrl(url);
+      setState({ loading: false, error: null, mediaType });
+      return () => { if (url) URL.revokeObjectURL(url); };
+    } else if (previewData.type === 'csv') {
+      setCsvData(previewData.parsed);
+      setState({ loading: false, error: null, mediaType });
+    } else if (previewData.type === 'text') {
+      setFileContent(previewData.content);
+      setState({ loading: false, error: null, mediaType });
+    } else if (previewData.type === 'zip') {
+      setZipContents(previewData.entries);
+      setState({ loading: false, error: null, mediaType });
+    } else if (previewData.type === 'direct') {
+      setDataUrl(previewData.url);
+      setState({ loading: false, error: null, mediaType });
+    }
+  }, [previewData, mediaType]);
+
+  useEffect(() => {
+    if (isLoading) {
+      setState({ loading: true, error: null, mediaType });
+    } else if (queryError) {
+      setState({ loading: false, error: 'Failed to load preview', mediaType });
+    }
+  }, [isLoading, queryError, mediaType]);
 
   const toggleFullscreen = () => {
     if (!fullscreen) containerRef.current?.requestFullscreen?.();
@@ -709,11 +800,32 @@ const FilePreview = ({ file, githubToken, githubUsername, repository, onClose, o
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
+            {isEditable && onEdit && (
+              <button 
+                onClick={() => {
+                  onEdit(file, fileContent);
+                  onClose();
+                }} 
+                title="Edit this file"
+                className="px-2.5 py-1.5 bg-[#2ea44f] hover:bg-[#2c974b] rounded-lg text-white text-xs font-semibold flex items-center gap-1.5 transition-colors mr-1 shadow-xs"
+              >
+                <FaEdit size={12}/> Edit File
+              </button>
+            )}
             <button onClick={() => onDownload(file)} title="Download"
                     className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white/50 hover:text-white">
               <FaDownload size={14}/>
             </button>
-            <button onClick={() => window.open(file.download_url,'_blank')} title="Open in browser"
+            <button onClick={() => {
+                      if (dataUrl) {
+                        window.open(dataUrl, '_blank');
+                      } else if (file.download_url && !file.isChunked) {
+                        window.open(file.download_url, '_blank');
+                      } else {
+                        onDownload(file);
+                      }
+                    }} 
+                    title="Open in new tab"
                     className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white/50 hover:text-white">
               <FaExternalLinkAlt size={14}/>
             </button>

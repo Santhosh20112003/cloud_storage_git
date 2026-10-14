@@ -4,6 +4,7 @@ import { GithubProvider, useGithub } from './context/GithubContext';
 import Landing from './components/Landing';
 import Dashboard from './components/Dashboard';
 import Callback from './components/Callback';
+import SharedFile from './components/SharedFile';
 import { Toaster } from 'react-hot-toast';
 
 const ProtectedRoute = ({ children }) => {
@@ -42,6 +43,7 @@ const App = () => {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/callback" element={<Callback />} />
+          <Route path="/share/:shareId" element={<SharedFile />} />
           <Route 
             path="/dashboard/*" 
             element={

@@ -1,14 +1,13 @@
 import React from 'react';
-import { FaHdd, FaLayerGroup, FaCheck, FaFileAlt, FaCalendarAlt, FaChartLine } from 'react-icons/fa';
+import { FaHdd, FaLayerGroup, FaCalendarAlt, FaFileAlt } from 'react-icons/fa';
 import { STORAGE_CONFIG, formatBytes } from '../../config/commonUtils';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, AreaChart, Area, CartesianGrid } from 'recharts';
 
 const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
-  // Activity over time (Mocking trends based on lastModified)
+  // Activity over time
   const activityData = React.useMemo(() => {
     const dates = {};
     const today = new Date();
-    // Initialize last 7 days
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(today.getDate() - i);
@@ -25,7 +24,6 @@ const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
     return Object.entries(dates).map(([name, count]) => ({ name, count }));
   }, [firestoreFiles]);
 
-  // Average file size calculation
   const AvgFileSize = React.useMemo(() => {
     const filesOnly = firestoreFiles.filter(f => f.type === 'file');
     if (filesOnly.length === 0) return '0 B';
@@ -33,15 +31,8 @@ const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
     return formatBytes(avg);
   }, [firestoreFiles, totalSizeBytes]);
 
-  // Calculate file type distribution
   const typeStats = React.useMemo(() => {
-    const counts = {
-      image: 0,
-      video: 0,
-      pdf: 0,
-      doc: 0,
-      other: 0
-    };
+    const counts = { image: 0, video: 0, pdf: 0, doc: 0, other: 0 };
 
     firestoreFiles.forEach(file => {
       if (file.type === 'dir') return;
@@ -62,15 +53,8 @@ const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
     ].filter(t => t.value > 0);
   }, [firestoreFiles]);
 
-  // Calculate storage by type
   const storageStats = React.useMemo(() => {
-    const sizes = {
-      image: 0,
-      video: 0,
-      pdf: 0,
-      doc: 0,
-      other: 0
-    };
+    const sizes = { image: 0, video: 0, pdf: 0, doc: 0, other: 0 };
 
     firestoreFiles.forEach(file => {
       if (file.type === 'dir') return;
@@ -93,77 +77,77 @@ const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
   }, [firestoreFiles]);
 
   return (
-    <div className="space-y-6 max-w-full overflow-hidden">
+    <div className="space-y-6 max-w-full overflow-hidden text-[#24292e] dark:text-[#c9d1d9]">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div className="bg-white border border-[#e1e4e8] rounded-xl p-5 shadow-sm hover:shadow-md transition-all group">
-          <div className="flex items-center gap-3 mb-3 text-[#586069]">
-            <FaHdd size={16} className="group-hover:text-[#0366d6] transition-colors" />
+        <div className="bg-white dark:bg-[#161b22] border border-[#e1e4e8] dark:border-[#30363d] rounded-xl p-5 shadow-xs hover:shadow-md transition-all group">
+          <div className="flex items-center gap-3 mb-3 text-[#586069] dark:text-[#8b949e]">
+            <FaHdd size={16} className="group-hover:text-[#0366d6] dark:group-hover:text-[#58a6ff] transition-colors" />
             <span className="text-[10px] font-bold uppercase tracking-wider">Total Storage</span>
           </div>
-          <div className="text-xl font-bold text-[#24292e]">{STORAGE_CONFIG.TOTAL_CAPACITY_GB}.0 GB</div>
+          <div className="text-xl font-bold text-[#24292e] dark:text-white">{STORAGE_CONFIG.TOTAL_CAPACITY_GB}.0 GB</div>
           <div className="flex items-center gap-1.5 mt-1">
             <span className="w-1.5 h-1.5 rounded-full bg-[#2ea44f]"></span>
-            <p className="text-[10px] text-[#586069] font-medium">Enterprise Plan</p>
+            <p className="text-[10px] text-[#586069] dark:text-[#8b949e] font-medium">Git Cloud Drive Plan</p>
           </div>
         </div>
 
-        <div className="bg-white border border-[#e1e4e8] rounded-xl p-5 shadow-sm hover:shadow-md transition-all group">
-          <div className="flex items-center gap-3 mb-3 text-[#0366d6]">
+        <div className="bg-white dark:bg-[#161b22] border border-[#e1e4e8] dark:border-[#30363d] rounded-xl p-5 shadow-xs hover:shadow-md transition-all group">
+          <div className="flex items-center gap-3 mb-3 text-[#0366d6] dark:text-[#58a6ff]">
             <FaLayerGroup size={16} className="group-hover:scale-110 transition-transform" />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Used Space</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#586069] dark:text-[#8b949e]">Used Space</span>
           </div>
-          <div className="text-xl font-bold text-[#24292e]">{formatBytes(totalSizeBytes)}</div>
-          <div className="mt-3 w-full bg-[#e1e4e8] h-1.5 rounded-full overflow-hidden">
+          <div className="text-xl font-bold text-[#24292e] dark:text-white">{formatBytes(totalSizeBytes)}</div>
+          <div className="mt-3 w-full bg-[#e1e4e8] dark:bg-[#30363d] h-1.5 rounded-full overflow-hidden">
             <div 
               className="h-full bg-[#0366d6] transition-all duration-1000 ease-out"
-              style={{ width: `${percentage}%` }}
+              style={{ width: `${Math.min(percentage || 0, 100)}%` }}
             ></div>
           </div>
-          <p className="text-[10px] text-[#586069] mt-2 font-medium">{percentage.toFixed(1)}% Capacity</p>
+          <p className="text-[10px] text-[#586069] dark:text-[#8b949e] mt-2 font-medium">{(percentage || 0).toFixed(1)}% Capacity</p>
         </div>
 
-        <div className="bg-white border border-[#e1e4e8] rounded-xl p-5 shadow-sm hover:shadow-md transition-all group">
+        <div className="bg-white dark:bg-[#161b22] border border-[#e1e4e8] dark:border-[#30363d] rounded-xl p-5 shadow-xs hover:shadow-md transition-all group">
           <div className="flex items-center gap-3 mb-3 text-[#f66a0a]">
             <FaCalendarAlt size={16} />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Avg. File Size</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#586069] dark:text-[#8b949e]">Avg. File Size</span>
           </div>
-          <div className="text-xl font-bold text-[#24292e]">{AvgFileSize}</div>
-          <p className="text-[10px] text-[#586069] mt-1 font-medium">Across {firestoreFiles.filter(f => f.type === 'file').length} files</p>
+          <div className="text-xl font-bold text-[#24292e] dark:text-white">{AvgFileSize}</div>
+          <p className="text-[10px] text-[#586069] dark:text-[#8b949e] mt-1 font-medium">Across {firestoreFiles.filter(f => f.type === 'file').length} files</p>
         </div>
       </div>
 
       {/* Upload Activity Detail Chart */}
-      <div className="bg-white border border-[#e1e4e8] rounded-xl p-5 shadow-sm">
+      <div className="bg-white dark:bg-[#161b22] border border-[#e1e4e8] dark:border-[#30363d] rounded-xl p-5 shadow-xs">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-[11px] font-bold text-[#24292e] uppercase tracking-wider">Upload Frequency (7 Days)</h3>
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#24292e] dark:text-white">Upload Activity (7 Days)</h3>
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#8a63d2]"></span>
-            <span className="text-[10px] text-[#6a737d] font-medium">Daily Operations</span>
+            <span className="text-[10px] text-[#6a737d] dark:text-[#8b949e] font-medium">Git Operations</span>
           </div>
         </div>
         <div className="h-[200px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={activityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="opacity-10" />
               <XAxis 
                 dataKey="name" 
                 axisLine={false} 
                 tickLine={false} 
-                tick={{ fontSize: 10, fill: '#586069' }} 
+                tick={{ fontSize: 10, fill: '#8b949e' }} 
               />
               <YAxis 
                 axisLine={false} 
                 tickLine={false} 
-                tick={{ fontSize: 10, fill: '#586069' }} 
+                tick={{ fontSize: 10, fill: '#8b949e' }} 
               />
               <Tooltip 
-                contentStyle={{ borderRadius: '8px', border: '1px solid #e1e4e8', fontSize: '11px' }}
+                contentStyle={{ borderRadius: '8px', border: '1px solid #30363d', backgroundColor: '#161b22', color: '#c9d1d9', fontSize: '11px' }}
               />
               <Area 
                 type="monotone" 
                 dataKey="count" 
                 stroke="#8a63d2" 
-                fillOpacity={0.1} 
+                fillOpacity={0.15} 
                 fill="#8a63d2" 
                 strokeWidth={2}
                 activeDot={{ r: 4, strokeWidth: 0 }}
@@ -173,11 +157,11 @@ const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
         </div>
       </div>
 
-       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="bg-white border border-[#e1e4e8] rounded-xl p-5 shadow-sm overflow-hidden">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="bg-white dark:bg-[#161b22] border border-[#e1e4e8] dark:border-[#30363d] rounded-xl p-5 shadow-xs overflow-hidden">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-[11px] font-bold text-[#24292e] uppercase tracking-wider">File Distribution</h3>
-            <span className="text-[10px] text-[#6a737d] font-medium bg-[#f6f8fa] px-2 py-0.5 rounded-full border border-[#e1e4e8]">{firestoreFiles.filter(f => f.type !== 'dir').length} Files</span>
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#24292e] dark:text-white">File Distribution</h3>
+            <span className="text-[10px] text-[#6a737d] dark:text-[#8b949e] font-medium bg-[#f6f8fa] dark:bg-[#21262d] px-2 py-0.5 rounded-full border border-[#e1e4e8] dark:border-[#30363d]">{firestoreFiles.filter(f => f.type !== 'dir').length} Files</span>
           </div>
           <div className="h-[220px] w-full relative">
             {typeStats.length > 0 ? (
@@ -198,9 +182,11 @@ const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
                   <Tooltip 
                     contentStyle={{ 
                       borderRadius: '8px', 
-                      border: '1px solid #e1e4e8', 
+                      border: '1px solid #30363d', 
+                      backgroundColor: '#161b22',
+                      color: '#c9d1d9',
                       fontSize: '11px', 
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
                       padding: '8px 12px'
                     }}
                   />
@@ -214,7 +200,7 @@ const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-[#6a737d] bg-[#fafbfc] rounded-lg border border-dashed border-[#e1e4e8]">
+              <div className="h-full flex flex-col items-center justify-center text-[#6a737d] dark:text-[#8b949e] bg-[#fafbfc] dark:bg-[#0d1117] rounded-lg border border-dashed border-[#e1e4e8] dark:border-[#30363d]">
                 <FaFileAlt size={32} className="mb-2 opacity-20" />
                 <p className="text-[11px] font-medium">No files uploaded yet</p>
               </div>
@@ -222,10 +208,10 @@ const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
           </div>
         </div>
 
-        <div className="bg-white border border-[#e1e4e8] rounded-xl p-5 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-[#161b22] border border-[#e1e4e8] dark:border-[#30363d] rounded-xl p-5 shadow-xs overflow-hidden">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-[11px] font-bold text-[#24292e] uppercase tracking-wider">Storage Usage (MB)</h3>
-            <span className="text-[10px] text-[#6a737d] font-medium bg-[#f6f8fa] px-2 py-0.5 rounded-full border border-[#e1e4e8]">ByType</span>
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#24292e] dark:text-white">Storage Usage (MB)</h3>
+            <span className="text-[10px] text-[#6a737d] dark:text-[#8b949e] font-medium bg-[#f6f8fa] dark:bg-[#21262d] px-2 py-0.5 rounded-full border border-[#e1e4e8] dark:border-[#30363d]">By Type</span>
           </div>
           <div className="h-[220px] w-full">
             {storageStats.length > 0 ? (
@@ -241,16 +227,18 @@ const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
                     type="category" 
                     axisLine={false} 
                     tickLine={false}
-                    tick={{ fontSize: 10, fill: '#586069', fontWeight: 500 }}
+                    tick={{ fontSize: 10, fill: '#8b949e', fontWeight: 500 }}
                     width={70}
                   />
                   <Tooltip 
-                    cursor={{ fill: '#f6f8fa', radius: 4 }}
+                    cursor={{ fill: '#21262d', radius: 4 }}
                     contentStyle={{ 
                       borderRadius: '8px', 
-                      border: '1px solid #e1e4e8', 
+                      border: '1px solid #30363d', 
+                      backgroundColor: '#161b22',
+                      color: '#c9d1d9',
                       fontSize: '11px',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
                     }}
                     formatter={(value) => [`${value} MB`, 'Size']}
                   />
@@ -264,9 +252,9 @@ const Overview = ({ totalSizeBytes, percentage, firestoreFiles = [] }) => {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-[#6a737d] bg-[#fafbfc] rounded-lg border border-dashed border-[#e1e4e8]">
+              <div className="h-full flex flex-col items-center justify-center text-[#6a737d] dark:text-[#8b949e] bg-[#fafbfc] dark:bg-[#0d1117] rounded-lg border border-dashed border-[#e1e4e8] dark:border-[#30363d]">
                 <FaLayerGroup size={32} className="mb-2 opacity-20" />
-                <p className="text-[11px] font-medium">Upload files to see analytics</p>
+                <p className="text-[11px] font-medium">Upload files to view analytics</p>
               </div>
             )}
           </div>
