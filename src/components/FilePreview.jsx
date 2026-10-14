@@ -7,7 +7,8 @@ import {
   FaVolumeUp, FaVolumeMute, FaPlay, FaPause, FaStepBackward,
   FaStepForward, FaMusic, FaCode, FaImage, FaFileCsv,
   FaFileArchive, FaLock, FaDatabase, FaFont, FaBook, FaEdit,
-  FaRedo, FaUndo, FaFilePowerpoint, FaFileExcel
+  FaRedo, FaUndo, FaFilePowerpoint, FaFileExcel,
+  FaChevronRight, FaChevronDown, FaFolderOpen
 } from 'react-icons/fa';
 import { MdFullscreen, MdFullscreenExit } from 'react-icons/md';
 import Editor from '@monaco-editor/react';
@@ -744,7 +745,7 @@ function CSVViewer({ rows }) {
   );
 }
 
-/** ZIP – expandable/collapsible file tree */
+/** ZIP – Google Drive Flat 2.0 Archive Explorer */
 function buildZipTree(entries) {
   const root = {};
   for (const entry of entries) {
@@ -767,31 +768,62 @@ function buildZipTree(entries) {
 }
 
 function ZipTreeNode({ node, name, level = 0 }) {
-  const [open, setOpen] = React.useState(level === 0); // root open by default
+  const [open, setOpen] = React.useState(level === 0);
   const isDir = node.__isDir;
   const children = node.__children;
+  const childKeys = Object.keys(children);
+
   return (
     <>
-      <div
-        className="flex items-center gap-2 px-4 py-1.5 hover:bg-white/5 border-b border-white/5 transition-colors select-none"
-        style={{ paddingLeft: `${16 + level * 20}px` }}
-        onClick={isDir ? () => setOpen((v) => !v) : undefined}
+      <tr
+        className="group cursor-pointer select-none transition-colors border-b border-[var(--outline-variant)]"
+        style={{ height: '42px' }}
+        onClick={isDir ? () => setOpen(v => !v) : undefined}
+        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--surface-variant)'}
+        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
       >
-        {isDir ? (
-          <span className="mr-1 cursor-pointer">
-            {open ? <FaFolder className="text-blue-400" size={13} /> : <FaFolder className="text-white/30" size={13} />}
-          </span>
-        ) : (
-          <FaFileAlt className="text-white/30" size={12} />
-        )}
-        <span className={isDir ? 'text-blue-300 font-medium' : 'text-white/70'}>{name}</span>
-        {!isDir && node.__size > 0 && (
-          <span className="ml-auto text-white/30 text-xs">{fmt(node.__size)}</span>
-        )}
-      </div>
+        <td className="px-4 py-2" style={{ paddingLeft: `${16 + level * 20}px` }}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            {isDir ? (
+              <span className="flex items-center gap-1.5 text-xs">
+                <span className="w-3.5 flex items-center justify-center text-[10px]" style={{ color: 'var(--on-surface-variant)' }}>
+                  {open ? <FaChevronDown size={9} /> : <FaChevronRight size={9} />}
+                </span>
+                {open ? (
+                  <FaFolderOpen size={16} style={{ color: '#1A73E8' }} />
+                ) : (
+                  <FaFolder size={16} style={{ color: '#1A73E8' }} />
+                )}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 ml-3.5">
+                <FaFileAlt size={15} style={{ color: 'var(--on-surface-variant)' }} />
+              </span>
+            )}
+
+            <span 
+              className={`text-xs truncate max-w-sm sm:max-w-md ${isDir ? 'font-medium' : ''}`}
+              style={{ color: isDir ? 'var(--on-surface)' : 'var(--on-surface)' }}
+              title={name}
+            >
+              {name}
+            </span>
+          </div>
+        </td>
+
+        <td className="px-4 py-2 text-xs font-mono text-right shrink-0" style={{ color: 'var(--on-surface-variant)' }}>
+          {!isDir && node.__size > 0 ? fmt(node.__size) : isDir ? `${childKeys.length} items` : '—'}
+        </td>
+      </tr>
+
       {isDir && open &&
         Object.entries(children)
-          .sort(([a], [b]) => a.localeCompare(b))
+          .sort(([aName, aNode], [bName, bNode]) => {
+            // Folders first, then alphabetically
+            if (aNode.__isDir && !bNode.__isDir) return -1;
+            if (!aNode.__isDir && bNode.__isDir) return 1;
+            return aName.localeCompare(bName);
+          })
           .map(([childName, childNode]) => (
             <ZipTreeNode key={childName} node={childNode} name={childName} level={level + 1} />
           ))}
@@ -801,17 +833,84 @@ function ZipTreeNode({ node, name, level = 0 }) {
 
 function ZIPViewer({ contents, file, onDownload }) {
   const tree = React.useMemo(() => buildZipTree(contents), [contents]);
+  const totalEntries = contents.length;
+  const totalSize = contents.reduce((acc, curr) => acc + (curr.size || 0), 0);
+
   return (
-    <div className="w-full h-full flex flex-col bg-[#0d1117] text-white overflow-hidden">
-      <div className="flex-1 overflow-auto font-mono text-sm">
+    <div 
+      className="w-full h-full flex flex-col select-none"
+      style={{ backgroundColor: 'var(--surface)', color: 'var(--on-surface)' }}
+    >
+      {/* Archive Header / Stats Bar */}
+      <div 
+        className="px-6 py-3 flex items-center justify-between shrink-0"
+        style={{ 
+          backgroundColor: 'var(--surface-variant)', 
+          borderBottom: '1px solid var(--outline-variant)' 
+        }}
+      >
+        <div className="flex items-center gap-3">
+          <div 
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'var(--secondary-container)' }}
+          >
+            <FaFileArchive size={15} style={{ color: 'var(--primary)' }} />
+          </div>
+          <div>
+            <p className="text-xs font-medium" style={{ color: 'var(--on-surface)' }}>
+              Archive Contents
+            </p>
+            <p className="text-[11px] font-mono" style={{ color: 'var(--on-surface-variant)' }}>
+              {totalEntries} files & folders · Uncompressed {fmt(totalSize)}
+            </p>
+          </div>
+        </div>
+
+        {onDownload && (
+          <button
+            onClick={() => onDownload(file)}
+            className="h-8 px-4 text-xs font-medium rounded-full text-white flex items-center gap-2 transition-all cursor-pointer shadow-sm hover:opacity-95 active:scale-95"
+            style={{ backgroundColor: 'var(--primary)' }}
+          >
+            <FaDownload size={11} />
+            <span>Download ZIP</span>
+          </button>
+        )}
+      </div>
+
+      {/* Archive Table Explorer */}
+      <div className="flex-1 overflow-auto">
         {Object.entries(tree).length === 0 ? (
-          <div className="px-4 py-6 text-white/40">Empty archive</div>
+          <div className="py-24 text-center text-xs" style={{ color: 'var(--on-surface-variant)' }}>
+            Empty archive
+          </div>
         ) : (
-          Object.entries(tree)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([name, node]) => (
-              <ZipTreeNode key={name} node={node} name={name} />
-            ))
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr 
+                className="h-9 text-xs font-medium"
+                style={{
+                  borderBottom: '1px solid var(--outline-variant)',
+                  backgroundColor: 'var(--surface)',
+                  color: 'var(--on-surface-variant)'
+                }}
+              >
+                <th className="px-6 font-normal">Name</th>
+                <th className="px-6 text-right font-normal">Size</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(tree)
+                .sort(([aName, aNode], [bName, bNode]) => {
+                  if (aNode.__isDir && !bNode.__isDir) return -1;
+                  if (!aNode.__isDir && bNode.__isDir) return 1;
+                  return aName.localeCompare(bName);
+                })
+                .map(([name, node]) => (
+                  <ZipTreeNode key={name} node={node} name={name} level={0} />
+                ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
